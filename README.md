@@ -111,7 +111,7 @@ See [docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md) for repository upload commands,
 | GET | `/api/v1/earth-observation/catalog` | Read available NASA GIBS visualization layers |
 | GET | `/api/v1/nasa/power?lat=…&lon=…&days=…` | Retrieve daily NASA POWER context for the map location |
 | POST | `/api/v1/earth-observation/sentinel-2/search` | Discover Copernicus Sentinel-2 scene metadata for a drawn boundary |
-| GET | `/api/satellites/sync-all?latitude=…&longitude=…` | Query the 13-source NASA/partner data hub with explicit live/catalog/simulation provenance |
+| GET | `/api/satellites/sync-all?latitude=…&longitude=…` | Query the 13-source NASA/partner data hub with explicit live/catalog/unavailable provenance |
 | POST | `/api/satellites/query-feature` | Return sources mapped to crop rotation, soil health, or weather context |
 
 All endpoints are versioned under `/api/v1`, matching the Member 4 handover contract. The exact schemas and example requests are in `docs/api-contract.md`.
@@ -150,3 +150,4 @@ Never commit `.env`, API credentials, farmer personal information, databases wit
 - **Member 4 → Member 3:** stable OpenAPI contract, example farm, observation, comparison, scenario, and report payloads.
 
 The web workspace runs on the same origin as the API. Native Flutter or other mobile clients can call the versioned JSON routes directly; browser CORS is configured for the local development origins in `.env.example`. See `docs/integration-checklist.md` before wiring a native client.
+
