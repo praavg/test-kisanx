@@ -25,8 +25,9 @@ The v0.3.1 frontend is served by the existing FastAPI app. `backend/web/index.ht
 
 ## Satellite data interpretation
 
-NASA GIBS layers are browse visualisations. NASA POWER, SMAP, GPM, and other gridded products are contextual signals at product-specific scales. The 13-source hub returns live numeric readings only for sources that expose public point values under this configuration; the rest provide catalog metadata and clearly labeled synthetic fallback metrics. Synthetic values have `simulation: true` and `decision_eligible: false` and must not drive farmer alerts or recommendations.
+NASA GIBS layers are browse visualisations. NASA POWER, SMAP, GPM, and other gridded products are contextual signals at product-specific scales. The 13-source hub returns live numeric readings only for sources that expose public point values under this configuration; the rest provide catalog metadata or an unavailable status with an empty `metrics` object. It does not substitute synthetic values for missing observations. Satellite outputs are not farm sensors and must not be treated as field-specific advisories.
 
 ## Submission and production handoff
 
 The app is suitable as a hackathon prototype. Before use with real farm decisions, populate and review the crop/rule catalogues, validate local data against ground observations, add authentication and farmer consent controls, define backup/retention practices, and deploy over HTTPS with production secrets and a database. Do not configure a real payment merchant or advertise unavailable services as live.
+
