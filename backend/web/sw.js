@@ -1,4 +1,4 @@
-const CACHE = 'kisanx-shell-v8';
+const CACHE = 'kisanx-shell-v9';
 const SHELL = ['/', '/assets/app.css', '/assets/app-config.js', '/assets/app.js', '/assets/payments.css', '/assets/payments.js', '/assets/native-motion.css', '/assets/mark.svg', '/assets/kisanx-logo.png', '/assets/kisanx-app-icon.png', '/manifest.webmanifest'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
