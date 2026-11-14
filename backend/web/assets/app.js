@@ -519,7 +519,7 @@ function rotationPayload() {
   return {
     current_crop: $('currentCrop').value,
     previous_crop: $('previousCrop').value,
-    district: $('districtInput').value.trim() || 'Ramtek, Nagpur, Maharashtra',
+    district: $('districtInput').value.trim(),
     irrigation: $('irrigationInput').value,
     soil_type: $('soilType').value,
     rainfall_scenario: $('rainfallScenario').value,
@@ -643,7 +643,7 @@ function renderRotationPlan(data) {
   $('scenarioState').textContent=`${data.plans.length} pathways`;
   const profile=data.profile||{};
   $('rotationPlanResults').innerHTML=`<div class="results-warning"><strong>${esc(data.decision_status)}</strong><br>${esc(data.score_note||'Illustrative comparison only.')}</div>
-    <div class="rotation-profile-strip"><span><b>Region</b>${esc(data.region||'Ramtek')}</span><span><b>Most recent crop</b>${esc(cropName(profile.current_crop||'soybean'))}</span><span><b>Rainfall case</b>${esc(profile.rainfall_scenario||'not set')}</span><span><b>Water</b>${esc(profile.irrigation||'not set')}</span></div>
+    <div class="rotation-profile-strip"><span><b>Region</b>${esc(data.region||'Not supplied')}</span><span><b>Most recent crop</b>${esc(cropName(profile.current_crop||'soybean'))}</span><span><b>Rainfall case</b>${esc(profile.rainfall_scenario||'not set')}</span><span><b>Water</b>${esc(profile.irrigation||'not set')}</span></div>
     <div class="rotation-plan-list">${data.plans.map((plan,i)=>`<article class="rotation-plan-card ${i===0?'rotation-plan-best':''}"><div class="rotation-plan-card-head"><div><span class="rotation-plan-kicker">PATHWAY ${i+1}</span><h3>${esc(plan.title)}</h3><p>${esc(plan.description)}</p></div><div class="rotation-fit"><strong>${plan.illustrative_fit_score}</strong><small>illustrative fit / 100</small></div></div><div class="rotation-year-grid">${plan.years.map(y=>`<div class="rotation-year-card"><div class="rotation-year-head">${y.year}</div><div class="rotation-season-slot"><span>KHARIF</span><strong>${esc(y.kharif)}</strong><small>${esc(y.kharif_reason)}</small></div><div class="rotation-season-slot rabi-slot"><span>RABI · CONDITIONAL</span><strong>${esc(y.rabi)}</strong><small>${esc(y.rabi_reason)}</small></div></div>`).join('')}</div><div class="rotation-reasons"><strong>Score components</strong><div class="rotation-score-components">${Object.entries(plan.score_components||{}).filter(([k,v])=>v!==null).map(([k,v])=>`<span><b>${esc(k.replaceAll('_',' '))}</b><em>${v}/100</em></span>`).join('')}</div><small class="score-weight-note">Weights: ${Object.entries(plan.score_weights||{}).map(([k,v])=>`${esc(k.replaceAll('_',' '))} ${v}%`).join(' · ')}</small><strong>Why this pathway scored this way</strong><ul>${plan.reasons.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div><button class="secondary-btn save-plan-btn" data-plan-index="${i}">Save this as my draft plan</button></article>`).join('')}</div>
     <div class="rotation-limit-list"><strong>Evidence and checks before acting</strong><ul>${(data.evidence_and_limits||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>
     <div class="rotation-source-links">${(data.sources||[]).map(s=>`<a href="${esc(s.url)}" target="_blank" rel="noopener"><strong>${esc(s.name)}</strong><small>${esc(s.note)}</small><span>Open source ↗</span></a>`).join('')}</div>`;
