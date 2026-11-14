@@ -150,4 +150,3 @@ Never commit `.env`, API credentials, farmer personal information, databases wit
 - **Member 4 → Member 3:** stable OpenAPI contract, example farm, observation, comparison, scenario, and report payloads.
 
 The web workspace runs on the same origin as the API. Native Flutter or other mobile clients can call the versioned JSON routes directly; browser CORS is configured for the local development origins in `.env.example`. See `docs/integration-checklist.md` before wiring a native client.
-
