@@ -14,4 +14,12 @@ services:
       - key: CORS_ORIGINS
         value: https://localhost,http://tauri.localhost,tauri://localhost
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: kisanx-db
+          property: connectionString
+
+databases:
+  - name: kisanx-db
+    databaseName: kisanx
+    user: kisanx
+    plan: free
