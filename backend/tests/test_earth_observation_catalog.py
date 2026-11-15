@@ -33,3 +33,14 @@ def test_main_page_and_assets_are_served_by_fastapi(client):
     assert "window.KISANX_API_BASE" in payments.text
     assert worker.status_code == 200
 
+
+def test_nasa_power_requires_an_explicit_location(client):
+    response = client.get("/api/v1/nasa/power")
+    assert response.status_code == 422
+
+
+def test_nasa_power_rejects_out_of_range_location(client):
+    response = client.get("/api/v1/nasa/power?lat=91&lon=79")
+    assert response.status_code == 422
+
+

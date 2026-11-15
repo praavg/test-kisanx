@@ -33,3 +33,43 @@ def test_invalid_coordinates_rejected(client):
     )
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_polygon_area_is_validated_and_calculated_by_backend(client):
+    response = client.post(
+        "/api/v1/farms",
+        json={
+            "name": "Mapped farm",
+            "latitude": 21.35,
+            "longitude": 79.35,
+            "area_value": 9999,
+            "area_unit": "hectare",
+            "geometry_geojson": {
+                "type": "Polygon",
+                "coordinates": [[[79.3, 21.3], [79.31, 21.3], [79.31, 21.31], [79.3, 21.31], [79.3, 21.3]]],
+            },
+        },
+    )
+    assert response.status_code == 201, response.text
+    farm = response.json()
+    assert 100 < farm["area_value"] < 130
+    assert farm["area_value"] != 9999
+    assert farm["area_unit"] == "hectare"
+
+
+def test_self_intersecting_field_boundary_is_rejected(client):
+    response = client.post(
+        "/api/v1/farms",
+        json={
+            "name": "Invalid boundary",
+            "latitude": 21.35,
+            "longitude": 79.35,
+            "geometry_geojson": {
+                "type": "Polygon",
+                "coordinates": [[[79.3, 21.3], [79.31, 21.31], [79.3, 21.31], [79.31, 21.3], [79.3, 21.3]]],
+            },
+        },
+    )
+    assert response.status_code == 422
+    assert "boundary" in response.json()["error"]["message"].lower()
+
