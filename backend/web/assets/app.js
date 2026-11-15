@@ -14,6 +14,7 @@ let farmPolygon = null;
 let drawMode = false;
 let drawPoints = [];
 let drawMarkers = [];
+let drawSketchLayer = null;
 let farmCache = [];
 let parcelCache = [];
 let selectedMapPoint = null;
@@ -63,6 +64,72 @@ document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click'
 document.querySelectorAll('[data-goto]').forEach(b => b.addEventListener('click', () => goto(b.dataset.goto)));
 $('mobileMenu').addEventListener('click', () => $('sidebar').classList.toggle('open'));
 $('helpTop').addEventListener('click', () => openKrishiQ());
+
+function updateOverviewArea() {
+  const selectingNew = $('boundaryFarmSelect')?.value === '__new__' && !selectedMapPoint;
+  const farm = selectingNew ? null : (selectedBoundaryFarm() || (!$('boundaryFarmSelect')?.value ? farmCache[0] : null) || null);
+  const point = selectedMapPoint || (farm ? {lat:Number(farm.latitude),lng:Number(farm.longitude)} : null);
+  if ($('overviewAreaName')) $('overviewAreaName').textContent = selectedMapPoint ? 'Selected map point' : (selectingNew ? 'New mapped field' : (farm?.name || 'Choose an area'));
+  if ($('overviewAreaCoords')) $('overviewAreaCoords').textContent = point ? `${Number(point.lat).toFixed(4)}, ${Number(point.lng).toFixed(4)}` : 'Select a saved farm or choose a point on the map';
+  if ($('farmCountOverview')) $('farmCountOverview').textContent = String(farmCache.length);
+  const hasSoil = Object.entries(farm?.soil_fields || {}).some(([key,value]) => !['sample_date','source'].includes(key) && value !== null && value !== '');
+  if ($('soilStatusOverview')) $('soilStatusOverview').textContent = hasSoil ? 'Report saved' : 'Not added';
+}
+function setOverviewApiStatus(online, message) {
+  const label = $('overviewBackendStatus');
+  const pulse = $('backendPulse');
+  if (label) label.textContent = message;
+  if (pulse) pulse.classList.toggle('is-offline', !online);
+}
+$('overviewFarmSelect')?.addEventListener('change', () => {
+  selectedMapPoint = null;
+  if ($('boundaryFarmSelect')) $('boundaryFarmSelect').value = $('overviewFarmSelect').value;
+  updateOverviewArea();
+  const farm = selectedBoundaryFarm();
+  if (farm && activeView === 'satellite') focusFarmBoundary(farm);
+});
+$('overviewChooseOnMap')?.addEventListener('click', () => goto('satellite'));
+$('overviewUseLocation')?.addEventListener('click', () => { goto('satellite'); setTimeout(locateMap, 180); });
+$('overviewApplyCoordinates')?.addEventListener('click', () => {
+  const lat=Number($('manualLatitude')?.value);
+  const lng=Number($('manualLongitude')?.value);
+  if($('manualLatitude')?.value===''||$('manualLongitude')?.value===''||!Number.isFinite(lat)||!Number.isFinite(lng)||lat < -90||lat > 90||lng < -180||lng > 180){toast('Enter a valid latitude (-90 to 90) and longitude (-180 to 180).');return;}
+  selectedMapPoint={lat,lng};
+  updateOverviewArea();
+  goto('satellite');
+  setTimeout(async()=>{
+    initMap();
+    if(map){if(selectedMapMarker)map.removeLayer(selectedMapMarker);selectedMapMarker=L.circleMarker([lat,lng],{radius:7,color:'#245b3d',fillColor:'#e6f1e7',fillOpacity:1,weight:2}).addTo(map).bindTooltip('Selected coordinates').openTooltip();map.setView([lat,lng],13);}
+    $('drawStatus').textContent=`Selected coordinates ${lat.toFixed(4)}, ${lng.toFixed(4)}. Request area context or draw a field.`;
+    updateActiveArea();
+    await Promise.allSettled([loadSatelliteMetrics(),loadPowerContext()]);
+  },180);
+});
+$('overviewAnalyzeBtn')?.addEventListener('click', () => {
+  goto('satellite');
+  setTimeout(async () => {
+    initMap();
+    if (!selectedObservationPoint()) {
+      setSatelliteStatus('Choose a farm, use My location, or tap a point on the map before requesting data.', 'warning');
+      $('drawStatus').textContent = 'Select a saved farm or tap a point to choose an analysis area.';
+      return;
+    }
+    await Promise.allSettled([loadSatelliteMetrics(), loadPowerContext()]);
+  }, 180);
+});
+$('overviewRefreshBtn')?.addEventListener('click', async () => {
+  setOverviewApiStatus(false, 'Checking API and refreshing farms…');
+  await loadFarms();
+  try {
+    const health = await api('/health');
+    const online = health.status === 'ok';
+    backendConnected = online;
+    setOverviewApiStatus(online, online ? 'API connected · farm records available' : 'API responded without a healthy status');
+  } catch (error) {
+    backendConnected = false;
+    setOverviewApiStatus(false, `API unavailable · ${error.message}`);
+  }
+});
 
 const SATELLITE_FALLBACK_CATALOG = [
   {id:'modis_terra_truecolor',title:'NASA MODIS Terra true colour',layer:'MODIS_Terra_CorrectedReflectance_TrueColor',format:'image/jpeg',period:'Daily',resolution:'250 m class imagery',units:'RGB reflectance visualisation',summary:'Corrected-reflectance imagery for visual landscape and seasonal context.',limitation:'MODIS pixels are much larger than many small farms. Use this for landscape context, not detailed diagnosis or parcel-level crop scoring.',use:'Visual context',provider:'NASA MODIS Terra',temporal:'Daily visualisation',kind:'visualisation'},
@@ -228,7 +295,7 @@ function bindSatelliteControls() {
   $('searchSentinelBtn').addEventListener('click', searchSentinelScenes);
   $('loadPowerContext').addEventListener('click', loadPowerContext);
   $('loadSatelliteMetrics')?.addEventListener('click', loadSatelliteMetrics);
-  $('boundaryFarmSelect')?.addEventListener('change', () => { selectedMapPoint=null; if(selectedMapMarker&&map)map.removeLayer(selectedMapMarker); selectedMapMarker=null; focusFarmBoundary(selectedBoundaryFarm()); updateActiveArea(); });
+  $('boundaryFarmSelect')?.addEventListener('change', () => { selectedMapPoint=null; if(selectedMapMarker&&map)map.removeLayer(selectedMapMarker); selectedMapMarker=null; focusFarmBoundary(selectedBoundaryFarm()); updateActiveArea(); updateOverviewArea(); });
 }
 
 function selectedBoundaryFarm() {
@@ -248,6 +315,7 @@ function locateMap() {
     map.setView([latitude,longitude],14);
     $('drawStatus').textContent='Device location selected. Draw a boundary or request regional context here.';
     updateActiveArea();
+    updateOverviewArea();
     setSatelliteStatus('Device location selected. NASA layers show regional imagery; numeric data status is listed below.', 'success');
   }, error => {
     const message=error.code===1?'Location permission was denied. Tap the map to select a point.':'Could not determine location. Tap the map to select a point.';
@@ -256,6 +324,7 @@ function locateMap() {
 }
 function selectedObservationPoint() {
   if(selectedMapPoint) return selectedMapPoint;
+  if($('boundaryFarmSelect')?.value==='__new__') return null;
   const farm=selectedBoundaryFarm()||farmCache[0];
   return farm?{lat:Number(farm.latitude),lng:Number(farm.longitude)}:null;
 }
@@ -269,10 +338,13 @@ function updateActiveArea() {
 function populateBoundaryFarmSelect() {
   const select=$('boundaryFarmSelect'); if(!select)return;
   const selected=select.value;
-  select.innerHTML=farmCache.map(f=>`<option value="${escapeHTML(f.farm_id)}">${escapeHTML(f.name)}</option>`).join('') || '<option value="">No saved farms</option>';
-  select.value=farmCache.some(f=>f.farm_id===selected)?selected:(farmCache[0]?.farm_id||'');
+  select.innerHTML='<option value="__new__">New mapped field…</option>'+farmCache.map(f=>`<option value="${escapeHTML(f.farm_id)}">${escapeHTML(f.name)}</option>`).join('');
+  select.value=selected==='__new__'?'__new__':(farmCache.some(f=>f.farm_id===selected)?selected:(farmCache[0]?.farm_id||'__new__'));
+  const overview=$('overviewFarmSelect');
+  if(overview){const chosen=overview.value;overview.innerHTML='<option value="">Select a saved farm…</option>'+farmCache.map(f=>`<option value="${escapeHTML(f.farm_id)}">${escapeHTML(f.name)}</option>`).join('');overview.value=farmCache.some(f=>f.farm_id===chosen)?chosen:(select.value==='__new__'?'':(select.value||''));}
   const farm=selectedBoundaryFarm();
-  $('boundaryFarmNote').textContent=farm?.geometry_geojson?`Saved farmer-drawn boundary · ${Number(farm.area_value||0).toFixed(2)} ha estimated`:farm?'Farm location only · no boundary saved':'No farm selected. Use My location or draw a field.';
+  $('boundaryFarmNote').textContent=select.value==='__new__'?'A separate farm record will be created when you save this boundary.':farm?.geometry_geojson?`Saved farmer-drawn boundary · ${Number(farm.area_value||0).toFixed(2)} ha estimated`:farm?'Farm location only · no boundary saved':'No farm selected. Use My location or draw a field.';
+  updateOverviewArea();
 }
 function focusFarmBoundary(farm) {
   if(!map)return;
@@ -306,12 +378,14 @@ function initMap() {
   if (map) { map.invalidateSize(); return; }
   if (!window.L) { toast('Map library could not load. Check your connection.'); setSatelliteStatus('Leaflet could not load. Check the internet connection.', 'warning'); return; }
   const fallback = $('satMapFallback');
-  if (fallback) fallback.hidden = true;
+  if (fallback) fallback.hidden = false;
   const firstFarm=selectedBoundaryFarm()||farmCache[0];
   map = L.map('farmMap', {zoomControl: false, preferCanvas: true}).setView(firstFarm?[firstFarm.latitude,firstFarm.longitude]:[20.5937,78.9629], firstFarm?13:5);
   L.control.zoom({position:'bottomright'}).addTo(map);
   const baseLayer=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'});
-  baseLayer.on('tileerror',()=>setSatelliteStatus('OpenStreetMap tiles unavailable. Check your connection.','warning'));
+  let baseTileLoaded=false;
+  baseLayer.on('tileload',()=>{baseTileLoaded=true;if(fallback)fallback.hidden=true;});
+  baseLayer.on('tileerror',()=>{if(!baseTileLoaded&&fallback)fallback.hidden=false;setSatelliteStatus('OpenStreetMap tiles are not loading. Check your connection; location selection works when tiles return.','warning');});
   baseLayer.addTo(map);
   const savedGeometry = selectedBoundaryFarm()?.geometry_geojson;
   if (savedGeometry) focusFarmBoundary(selectedBoundaryFarm());
@@ -322,11 +396,17 @@ function initMap() {
       selectedMapMarker=L.circleMarker(e.latlng,{radius:6,color:'#245b3d',fillColor:'#e6f1e7',fillOpacity:1,weight:2}).addTo(map).bindTooltip(`Selected point · ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`).openTooltip();
       $('drawStatus').textContent=`Selected location ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}. Request climate context or draw a field.`;
       updateActiveArea();
+      updateOverviewArea();
       return;
     }
     drawPoints.push([e.latlng.lat, e.latlng.lng]);
     const marker = L.circleMarker(e.latlng, {radius:5,color:'#245b3d',fillColor:'#e6f1e7',fillOpacity:1,weight:2}).addTo(map);
     drawMarkers.push(marker);
+    if (drawSketchLayer) map.removeLayer(drawSketchLayer);
+    const previewPoints=drawPoints.map(([lat,lng])=>[lat,lng]);
+    drawSketchLayer=previewPoints.length>=3
+      ? L.polygon(previewPoints,{color:'#26764c',weight:2.5,dashArray:'6 5',fillColor:'#82bf8e',fillOpacity:.16,interactive:false}).addTo(map)
+      : L.polyline(previewPoints,{color:'#26764c',weight:2.5,dashArray:'6 5',interactive:false}).addTo(map);
     $('drawStatus').textContent = `${drawPoints.length} boundary points added. Add at least 3 points, then save.`;
     $('saveBoundaryBtn').disabled = drawPoints.length < 3;
   });
@@ -413,6 +493,7 @@ $('drawBoundaryBtn').addEventListener('click', () => {
   drawMode = !drawMode;
   if (drawMode) {
     drawPoints = []; drawMarkers.forEach(m => map.removeLayer(m)); drawMarkers = [];
+    if(drawSketchLayer){map.removeLayer(drawSketchLayer);drawSketchLayer=null;}
     $('drawBoundaryBtn').textContent = '✓ Finish drawing';
     $('drawStatus').textContent = 'Tap or click at least 3 points around your field boundary. This is an estimate.';
     map.getContainer().style.cursor = 'crosshair';
@@ -432,11 +513,13 @@ $('saveBoundaryBtn').addEventListener('click', async () => {
     const vertices = coords.slice(0,-1);
     const centerLat = vertices.reduce((sum,p)=>sum+p[1],0)/vertices.length;
     const centerLon = vertices.reduce((sum,p)=>sum+p[0],0)/vertices.length;
-    if (!farmCache.length) await createFarm('My first farm',{lat:centerLat,lng:centerLon});
-    const farm = selectedBoundaryFarm() || farmCache[0];
+    const createNewFarm=$('boundaryFarmSelect')?.value==='__new__'||!farmCache.length;
+    if (createNewFarm) await createFarm('Mapped field',{lat:centerLat,lng:centerLon});
+    const farm = createNewFarm ? farmCache[0] : (selectedBoundaryFarm() || farmCache[0]);
     const updated = await api(`/farms/${encodeURIComponent(farm.farm_id)}`, {method:'PATCH', body:JSON.stringify({geometry_geojson:geometry,latitude:centerLat,longitude:centerLon})});
     const farmIndex=farmCache.findIndex(item=>item.farm_id===updated.farm_id);
     if(farmIndex>=0)farmCache[farmIndex]=updated;
+    $('boundaryFarmSelect').value=updated.farm_id;
     populateBoundaryFarmSelect();
     parcelCache = [{farm_id:updated.farm_id,geojson:geometry,area_hectares:updated.area_value,geometry_quality:'server-calculated spherical estimate'}];
     toast(`Boundary saved · server estimate ${Number(updated.area_value).toFixed(2)} ha.`);
@@ -444,12 +527,15 @@ $('saveBoundaryBtn').addEventListener('click', async () => {
     $('drawBoundaryBtn').textContent='＋ Draw field'; $('saveBoundaryBtn').disabled=true;
     drawMarkers.forEach(m => map.removeLayer(m)); drawMarkers=[];
     focusFarmBoundary(updated);
+    if(drawSketchLayer){map.removeLayer(drawSketchLayer);drawSketchLayer=null;}
     $('drawStatus').textContent = `Saved estimated boundary · ${Number(updated.area_value).toFixed(2)} ha by spherical area calculation.`;
     await loadFarms();
   } catch (e) { toast(e.message); }
 });
 $('resetBoundaryBtn').addEventListener('click', () => {
   if (farmPolygon && map) map.removeLayer(farmPolygon);
+  if (drawSketchLayer && map) map.removeLayer(drawSketchLayer);
+  drawSketchLayer=null;
   farmPolygon = null; drawPoints=[]; drawMarkers.forEach(m => map && map.removeLayer(m)); drawMarkers=[];
   $('drawStatus').textContent='Map boundary reset. Saved parcel records are not deleted.';
   $('saveBoundaryBtn').disabled=true;
@@ -470,6 +556,7 @@ async function loadFarms() {
     parcelCache = farmCache.filter(f=>f.geometry_geojson).map(f=>({farm_id:f.farm_id,geojson:f.geometry_geojson,area_hectares:f.area_unit==='hectare'?f.area_value:null}));
     $('parcelCount').textContent = parcelCache.length;
     updateActiveArea();
+    updateOverviewArea();
     $('farmCounter').textContent = `${farmCache.length} farm${farmCache.length===1?'':'s'}`;
     $('farmList').innerHTML = farmCache.length ? farmCache.map(f => {
       const n = parcelCache.filter(p=>p.farm_id===f.farm_id).length;
@@ -479,6 +566,8 @@ async function loadFarms() {
     farmCache = []; parcelCache = [];
     $('parcelCount').textContent = '0'; $('farmCounter').textContent = 'API unavailable';
     $('farmList').innerHTML = `<div class="empty-inline">Could not load saved farms: ${escapeHTML(e.message)}. Reconnect to the backend and retry.</div>`;
+    if($('overviewFarmSelect'))$('overviewFarmSelect').innerHTML='<option value="">Farm service unavailable</option>';
+    updateOverviewArea();
   }
 }
 
@@ -955,6 +1044,7 @@ if ($('sentinelEndDate')) { const end = new Date(); end.setDate(end.getDate()-5)
   $('soilDate').value=new Date().toISOString().slice(0,10);
   $('activityDate').value=new Date().toISOString().slice(0,10);
   if(!window.KISANX_IS_NATIVE && 'serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
-  try{const h=await api('/health');backendConnected=h.status==='ok';if(!backendConnected)toast('Backend status is not ready.');}catch(e){backendConnected=false;console.info('Running frontend demonstration mode; connect FastAPI for server-backed records and live integrations.');}
+  try{const h=await api('/health');backendConnected=h.status==='ok';setOverviewApiStatus(backendConnected,backendConnected?'API connected · farm records available':'API responded without a healthy status');if(!backendConnected)toast('Backend status is not ready.');}catch(e){backendConnected=false;setOverviewApiStatus(false,`API unavailable · ${e.message}`);console.info('Backend unavailable; server-backed records and live integrations cannot be loaded.');}
 }
 boot();
+
