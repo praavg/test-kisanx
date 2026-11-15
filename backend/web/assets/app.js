@@ -1217,6 +1217,7 @@ $('languageSelect').addEventListener('change',e=>{
 $('aiProvider')?.addEventListener('change',()=>{$('aiBaseUrlWrap').hidden=$('aiProvider').value!=='openai-compatible';});
 $('saveAiSettings')?.addEventListener('click',()=>{
   const provider=$('aiProvider').value,model=$('aiModel').value.trim(),audio_model=$('aiAudioModel').value.trim(),key=$('aiApiKey').value.trim(),base_url=$('aiBaseUrl').value.trim();
+  if(!['gemini','openai','anthropic','openai-compatible'].includes(provider)){$('aiSettingsStatus').textContent='Choose the AI provider you want to use.';return;}
   if(!model||!key){$('aiSettingsStatus').textContent='Enter a model ID and your own provider key.';return;}
   if(provider==='openai-compatible'&&!/^https:\/\//i.test(base_url)){$('aiSettingsStatus').textContent='OpenAI-compatible endpoints must use HTTPS.';return;}
   try{localStorage.setItem(AI_SETTINGS_KEY,JSON.stringify({provider,model,audio_model,base_url:provider==='openai-compatible'?base_url:''}));sessionStorage.setItem(AI_KEY_SESSION,key);}
