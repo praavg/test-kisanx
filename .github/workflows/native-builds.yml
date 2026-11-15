@@ -15,7 +15,7 @@ jobs:
   android-apk:
     runs-on: ubuntu-latest
     env:
-      KISANX_API_BASE: ${{ vars.KISANX_API_BASE }}
+      KISANX_API_BASE: "${{ vars.KISANX_API_BASE || 'https://kisanx-api-uxko.onrender.com' }}"
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -55,7 +55,7 @@ jobs:
   windows-installer:
     runs-on: windows-latest
     env:
-      KISANX_API_BASE: ${{ vars.KISANX_API_BASE }}
+      KISANX_API_BASE: "${{ vars.KISANX_API_BASE || 'https://kisanx-api-uxko.onrender.com' }}"
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -76,4 +76,3 @@ jobs:
           path: src-tauri/target/release/bundle/nsis/*-setup.exe
           if-no-files-found: error
           retention-days: 14
-
