@@ -27,6 +27,8 @@ let speechRecorder = null;
 let speechChunks = [];
 let voiceLanguage = 'en-IN';
 let interfaceLanguage = 'en';
+const LANGUAGE_NAMES = {'en':'English','hi-IN':'Hindi','mr-IN':'Marathi','bn-IN':'Bengali','gu-IN':'Gujarati','kn-IN':'Kannada','ml-IN':'Malayalam','or-IN':'Odia','pa-IN':'Punjabi','ta-IN':'Tamil','te-IN':'Telugu','ur-IN':'Urdu'};
+const SPEECH_LOCALES = Object.fromEntries(Object.keys(LANGUAGE_NAMES).map(code=>[code,code==='en'?'en-IN':code]));
 let toastTimer = null;
 const $ = (id) => document.getElementById(id);
 const AI_SETTINGS_KEY = 'kisanx-ai-preferences-v1';
@@ -48,9 +50,25 @@ const UI_TEXT = {
   }
 };
 
+const EXTRA_UI = {
+  'bn-IN': ['ড্যাশবোর্ড','খামার','স্যাটেলাইট মানচিত্র','ফসল পর্যায়ক্রম','মাটি ও জল','আবহাওয়া','ফসল ক্যালেন্ডার','ফসল স্বাস্থ্য','গবেষণা','খামারের তথ্য','সেটিংস ও API','পরিকল্পনা ও বিলিং','ফসলের অবস্থা দেখুন','খামারের নথি','স্যাটেলাইট মানচিত্র ও এলাকা','আবহাওয়া ও জলবায়ু','ফসল স্বাস্থ্য পরীক্ষা','সেটিংস ও ডেটা উৎস'],
+  'gu-IN': ['ડેશબોર્ડ','ખેતરો','ઉપગ્રહ નકશો','પાક ફેરબદલી','માટી અને પાણી','હવામાન','પાક કેલેન્ડર','પાક આરોગ્ય','સંશોધન','ખેતરની માહિતી','સેટિંગ્સ અને API','યોજનાઓ અને બિલિંગ','તમારા ખેતરને સમજો','ખેતરના રેકોર્ડ','ઉપગ્રહ નકશો અને વિસ્તાર','હવામાન અને આબોહવા','પાક આરોગ્ય તપાસ','સેટિંગ્સ અને ડેટા સ્ત્રોત'],
+  'kn-IN': ['ಡ್ಯಾಶ್‌ಬೋರ್ಡ್','ಹೊಲಗಳು','ಉಪಗ್ರಹ ನಕ್ಷೆ','ಬೆಳೆ ಪರಿವರ್ತನೆ','ಮಣ್ಣು ಮತ್ತು ನೀರು','ಹವಾಮಾನ','ಬೆಳೆ ಕ್ಯಾಲೆಂಡರ್','ಬೆಳೆ ಆರೋಗ್ಯ','ಸಂಶೋಧನೆ','ಹೊಲದ ಮಾಹಿತಿ','ಸೆಟ್ಟಿಂಗ್‌ಗಳು ಮತ್ತು API','ಯೋಜನೆಗಳು ಮತ್ತು ಬಿಲ್ಲಿಂಗ್','ನಿಮ್ಮ ಹೊಲವನ್ನು ತಿಳಿಯಿರಿ','ಹೊಲದ ದಾಖಲೆಗಳು','ಉಪಗ್ರಹ ನಕ್ಷೆ ಮತ್ತು ಪ್ರದೇಶ','ಹವಾಮಾನ ಮತ್ತು ಹವಾಮಾನ ಸಂದರ್ಭ','ಬೆಳೆ ಆರೋಗ್ಯ ಪರಿಶೀಲನೆ','ಸೆಟ್ಟಿಂಗ್‌ಗಳು ಮತ್ತು ಡೇಟಾ ಮೂಲಗಳು'],
+  'ml-IN': ['ഡാഷ്ബോർഡ്','കൃഷിയിടങ്ങൾ','ഉപഗ്രഹ ഭൂപടം','വിള പരിക്രമണം','മണ്ണും വെള്ളവും','കാലാവസ്ഥ','വിള കലണ്ടർ','വിള ആരോഗ്യം','ഗവേഷണം','കൃഷിയിട വിവരം','ക്രമീകരണങ്ങളും API-യും','പദ്ധതികളും ബില്ലിംഗും','നിങ്ങളുടെ കൃഷിയിടം അറിയുക','കൃഷിയിട രേഖകൾ','ഉപഗ്രഹ ഭൂപടവും പ്രദേശവും','കാലാവസ്ഥയും കാലാവസ്ഥാ പശ്ചാത്തലവും','വിള ആരോഗ്യ പരിശോധന','ക്രമീകരണങ്ങളും ഡാറ്റ ഉറവിടങ്ങളും'],
+  'or-IN': ['ଡ୍ୟାସବୋର୍ଡ','କ୍ଷେତ','ଉପଗ୍ରହ ମାନଚିତ୍ର','ଫସଲ ଆବର୍ତ୍ତନ','ମାଟି ଓ ଜଳ','ପାଣିପାଗ','ଫସଲ କ୍ୟାଲେଣ୍ଡର','ଫସଲ ସ୍ୱାସ୍ଥ୍ୟ','ଗବେଷଣା','କ୍ଷେତ ସୂଚନା','ସେଟିଂ ଓ API','ଯୋଜନା ଓ ବିଲିଂ','ନିଜ କ୍ଷେତକୁ ବୁଝନ୍ତୁ','କ୍ଷେତ ରେକର୍ଡ','ଉପଗ୍ରହ ମାନଚିତ୍ର ଓ ଅଞ୍ଚଳ','ପାଣିପାଗ ଓ ଜଳବାୟୁ','ଫସଲ ସ୍ୱାସ୍ଥ୍ୟ ଯାଞ୍ଚ','ସେଟିଂ ଓ ଡାଟା ଉତ୍ସ'],
+  'pa-IN': ['ਡੈਸ਼ਬੋਰਡ','ਖੇਤ','ਸੈਟੇਲਾਈਟ ਨਕਸ਼ਾ','ਫ਼ਸਲ ਚੱਕਰ','ਮਿੱਟੀ ਅਤੇ ਪਾਣੀ','ਮੌਸਮ','ਫ਼ਸਲ ਕੈਲੰਡਰ','ਫ਼ਸਲ ਸਿਹਤ','ਖੋਜ','ਖੇਤ ਦੀ ਜਾਣਕਾਰੀ','ਸੈਟਿੰਗਾਂ ਅਤੇ API','ਯੋਜਨਾਵਾਂ ਅਤੇ ਬਿਲਿੰਗ','ਆਪਣੇ ਖੇਤ ਨੂੰ ਸਮਝੋ','ਖੇਤ ਦੇ ਰਿਕਾਰਡ','ਸੈਟੇਲਾਈਟ ਨਕਸ਼ਾ ਅਤੇ ਖੇਤਰ','ਮੌਸਮ ਅਤੇ ਜਲਵਾਯੂ','ਫ਼ਸਲ ਸਿਹਤ ਜਾਂਚ','ਸੈਟਿੰਗਾਂ ਅਤੇ ਡਾਟਾ ਸਰੋਤ'],
+  'ta-IN': ['முகப்பு','பண்ணைகள்','செயற்கைக்கோள் வரைபடம்','பயிர் சுழற்சி','மண் மற்றும் நீர்','வானிலை','பயிர் நாட்காட்டி','பயிர் நலம்','ஆராய்ச்சி','வயல் தகவல்','அமைப்புகள் மற்றும் API','திட்டங்கள் மற்றும் கட்டணம்','உங்கள் வயலை அறியுங்கள்','வயல் பதிவுகள்','செயற்கைக்கோள் வரைபடம் மற்றும் பகுதி','வானிலை மற்றும் காலநிலை','பயிர் நல பரிசோதனை','அமைப்புகள் மற்றும் தரவு மூலங்கள்'],
+  'te-IN': ['డ్యాష్‌బోర్డ్','పొలాలు','ఉపగ్రహ పటం','పంట మార్పిడి','నేల మరియు నీరు','వాతావరణం','పంట క్యాలెండర్','పంట ఆరోగ్యం','పరిశోధన','పొలం సమాచారం','సెట్టింగ్‌లు మరియు API','ప్లాన్‌లు మరియు బిల్లింగ్','మీ పొలాన్ని తెలుసుకోండి','పొలం రికార్డులు','ఉపగ్రహ పటం మరియు ప్రాంతం','వాతావరణం మరియు వాతావరణ సందర్భం','పంట ఆరోగ్య తనిఖీ','సెట్టింగ్‌లు మరియు డేటా వనరులు'],
+  'ur-IN': ['ڈیش بورڈ','کھیت','سیٹلائٹ نقشہ','فصلوں کی گردش','مٹی اور پانی','موسم','فصل کیلنڈر','فصل کی صحت','تحقیق','کھیت کی معلومات','ترتیبات اور API','منصوبے اور ادائیگی','اپنے کھیت کو سمجھیں','کھیت کے ریکارڈ','سیٹلائٹ نقشہ اور رقبہ','موسم اور آب و ہوا','فصل کی صحت کی جانچ','ترتیبات اور ڈیٹا ذرائع']
+};
+for(const [language,labels] of Object.entries(EXTRA_UI)){
+  const [overview,farms,satellite,rotation,soil,weather,calendar,doctor,research,insights,settings,plans,hOverview,hFarms,hSatellite,hWeather,hDoctor,hSettings]=labels;
+  UI_TEXT[language]={nav:{overview,farms,satellite,rotation,soil,weather,calendar,doctor,research,insights,settings,plans},ids:{},headings:{'view-overview':hOverview,'view-farms':hFarms,'view-satellite':hSatellite,'view-weather':hWeather,'view-doctor':hDoctor,'view-settings':hSettings},labels:{interface:`KrishiQ language: ${LANGUAGE_NAMES[language]}. Model replies follow this language; other interface text may remain English.`},copy:{}};
+}
+
 function applyInterfaceLanguage(language) {
-  interfaceLanguage = language === 'hi-IN' || language === 'mr-IN' ? language : 'en';
-  voiceLanguage = interfaceLanguage === 'en' ? 'en-IN' : interfaceLanguage;
+  interfaceLanguage = Object.hasOwn(LANGUAGE_NAMES,language) ? language : 'en';
+  voiceLanguage = SPEECH_LOCALES[interfaceLanguage] || 'en-IN';
   document.querySelectorAll('.nav-item[data-view]').forEach(button => {
     if (button.dataset.baseLabel) {
       const textNode=[...button.childNodes].find(node=>node.nodeType===Node.TEXT_NODE&&node.textContent.trim());
@@ -1061,11 +1079,11 @@ $('askCropDoctorAI')?.addEventListener('click', async () => {
   if(!key||!preferences.provider||!preferences.model){$('inspectionFeedback').textContent='Choose your AI provider and enter your own API key in Settings first.';return;}
   const symptoms=$('doctorSymptoms').value.trim();
   if(!symptoms){$('inspectionFeedback').textContent='Describe what changed before requesting symptom context.';return;}
-  const languageName=interfaceLanguage==='hi-IN'?'Hindi':interfaceLanguage==='mr-IN'?'Marathi':'English';
+  const languageName=LANGUAGE_NAMES[interfaceLanguage]||'English';
   const includePhotos=$('includeCropPhotos')?.checked===true;
   const selectedPhotos=includePhotos?cropPhotoRecords.map(photo=>photo.file):[];
   if(selectedPhotos.length>4||selectedPhotos.some(file=>file.size>8*1024*1024)||selectedPhotos.reduce((sum,file)=>sum+file.size,0)>15*1024*1024){$('inspectionFeedback').textContent='Keep each selected image under 8 MB and the total under 15 MB.';return;}
-  const prompt=`You are an agricultural extension information assistant. Reply in ${languageName}. The crop is ${$('doctorCrop').value}; stated growth stage: ${$('doctorStage').value}. Farmer's text: ${symptoms}. Offer at most three general possibilities as hypotheses, explain what observations could help distinguish them, and ask for missing location, variety, onset, distribution, weather and field-management details. If images are attached, describe visible features only as clues, not as a confirmed diagnosis. Do not recommend pesticide/fertilizer products, doses or mixtures. Advise local KVK/agriculture expert confirmation before treatment.`;
+  const prompt=`You are an agricultural extension information assistant for India. Reply entirely in ${languageName}, using that language's normal script. Avoid English except crop names and standard scientific units. The crop is ${$('doctorCrop').value}; stated growth stage: ${$('doctorStage').value}. Farmer's text: ${symptoms}. Offer at most three general possibilities as hypotheses, explain what observations could help distinguish them, and ask for missing location, variety, onset, distribution, weather and field-management details. If images are attached, describe visible features only as clues, not as a confirmed diagnosis. Do not recommend pesticide/fertilizer products, doses or mixtures. Advise local KVK/agriculture expert confirmation before treatment.`;
   resultNode.hidden=false;resultNode.textContent=`Sending symptom context${selectedPhotos.length?` and ${selectedPhotos.length} selected photo(s)`:''} to your provider…`;
   try{
     const images=await Promise.all(selectedPhotos.map(file=>new Promise((resolve,reject)=>{
@@ -1112,7 +1130,7 @@ async function sendChat(){
   const q=message.toLowerCase();
   const say=(answer,modelReply=false)=>{
     let reply=answer;
-    if(!modelReply&&interfaceLanguage!=='en'){
+    if(!modelReply&&(interfaceLanguage==='hi-IN'||interfaceLanguage==='mr-IN')){
       const hi=interfaceLanguage==='hi-IN';
       if(hasAny(['poison','poisoning','swallowed chemical','difficulty breathing','unconscious'])) reply=hi?'यह आपात स्थिति हो सकती है। तुरंत स्थानीय आपातकालीन सेवा या योग्य चिकित्सा/पशु-चिकित्सा विशेषज्ञ से संपर्क करें। सुरक्षित हो तो लोगों और पशुओं को संपर्क से दूर रखें। मैं आपात उपचार नहीं दे सकता।':'ही आपत्कालीन परिस्थिती असू शकते. त्वरित स्थानिक आपत्कालीन सेवा किंवा पात्र वैद्यकीय/पशुवैद्यकीय तज्ज्ञांशी संपर्क करा. सुरक्षित असल्यास लोकांना आणि जनावरांना दूर ठेवा. मी उपचार देऊ शकत नाही.';
       else if(hasAny(['pesticide','insecticide','fungicide','herbicide','spray dose','chemical dose'])) reply=hi?'मैं अनुमान से कीटनाशक, मात्रा या मिश्रण नहीं बता सकता। फसल, किस्म, जिला, अवस्था और लक्षण दर्ज करें। रसायन से पहले वर्तमान उत्पाद लेबल और स्थानीय कृषि विशेषज्ञ/KVK से पुष्टि करें।':'अंदाजाने कीटकनाशक, मात्रा किंवा मिश्रण सांगू शकत नाही. पीक, वाण, जिल्हा, अवस्था आणि लक्षणे नोंदवा. रसायन वापरण्यापूर्वी सध्याचे उत्पादन लेबल आणि स्थानिक कृषी तज्ज्ञ/KVK यांच्याकडून खात्री करा.';
@@ -1156,8 +1174,8 @@ async function sendChat(){
   if (apiKey && preferences.provider && preferences.model) {
     $('voiceStatus').textContent = `Asking ${preferences.provider}…`;
     try {
-      const languageName = interfaceLanguage === 'hi-IN' ? 'Hindi' : interfaceLanguage === 'mr-IN' ? 'Marathi' : 'English';
-      const prompt = `You are KrishiQ, a careful agricultural information assistant for India. Reply in ${languageName}, in plain language. Separate general information from local facts. Never invent weather or satellite measurements, diagnoses, or pesticide products and doses. Ask for crop, variety, district, season and stage when missing. For diagnosis, say symptoms are not proof and recommend local KVK/agriculture expert review. Do not give chemical rates or mixtures; refer to the current approved product label and qualified local advisor. Do not claim to have inspected photos.\n\nFarmer question: ${message}`;
+      const languageName = LANGUAGE_NAMES[interfaceLanguage] || 'English';
+      const prompt = `You are KrishiQ, a careful agricultural information assistant for India. Reply entirely in ${languageName}, using its usual native script; avoid mixing in English except crop names, units and proper nouns. Use plain language. Separate general information from local facts. Never invent weather or satellite measurements, diagnoses, or pesticide products and doses. Ask for crop, variety, district, season and stage when missing. For diagnosis, say symptoms are not proof and recommend local KVK/agriculture expert review. Do not give chemical rates or mixtures; refer to the current approved product label and qualified local advisor. Do not claim to have inspected photos.\n\nFarmer question: ${message}`;
       const result=await api('/ai/chat',{method:'POST',headers:{'X-Provider-API-Key':apiKey},body:JSON.stringify({provider:preferences.provider,model:preferences.model,base_url:preferences.base_url||null,message:prompt})});
       $('voiceStatus').textContent=`Reply from ${result.provider} · key used for this request only`;
       say(result.answer,true); return;
@@ -1211,8 +1229,12 @@ $('languageSelect').addEventListener('change',e=>{
   try { localStorage.setItem('kisanx-interface-language-v1',e.target.value); } catch (_) {}
   applyInterfaceLanguage(e.target.value);
   if (recognition) { recognition.stop(); recognition=null; }
-  const names={'hi-IN':'Hindi','mr-IN':'Marathi',en:'English'};
-  $('voiceStatus').textContent=`Interface and speech preference set to ${names[e.target.value]||'English'}. Some untranslated content may remain English; speech depends on installed device voices.`;
+  $('voiceStatus').textContent=`KrishiQ replies and speech are set to ${LANGUAGE_NAMES[e.target.value]||'English'}. Some interface text may remain English; speech depends on installed device voices.`;
+});
+$('themeToggle')?.addEventListener('click',()=>{
+  const next=document.body.dataset.theme==='night'?'day':'night';document.body.dataset.theme=next;
+  try{localStorage.setItem('kisanx-theme-v1',next);}catch(_){}
+  const label=next==='night'?'Switch to light theme':'Switch to dark theme';$('themeToggle').setAttribute('aria-label',label);$('themeToggle').title=label;
 });
 $('aiProvider')?.addEventListener('change',()=>{$('aiBaseUrlWrap').hidden=$('aiProvider').value!=='openai-compatible';});
 $('saveAiSettings')?.addEventListener('click',()=>{
@@ -1232,6 +1254,7 @@ $('clearAiSettings')?.addEventListener('click',()=>{
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openKrishiQ();}});
 
 async function boot(){
+  try{document.body.dataset.theme=localStorage.getItem('kisanx-theme-v1')||'night';}catch(_){document.body.dataset.theme='night';}
   try { const saved=localStorage.getItem('kisanx-interface-language-v1')||'en'; $('languageSelect').value=saved; applyInterfaceLanguage(saved); } catch (_) { applyInterfaceLanguage('en'); }
   loadAiPreferences();
   try{await loadFarms();}catch(e){}
