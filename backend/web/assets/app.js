@@ -20,6 +20,7 @@ let parcelCache = [];
 let selectedMapPoint = null;
 let selectedMapMarker = null;
 let lastWeather = null;
+let lastForecast = null;
 let backendConnected = false;
 let speechOn = true;
 let recognition = null;
@@ -875,6 +876,15 @@ $('saveRotationDiaryBtn').addEventListener('click',async()=>{
   loadRotationDiary();toast('Farm outcome saved.');
 });
 $('refreshWeatherBtn').addEventListener('click', refreshWeather);
+$('weatherUseLocationBtn')?.addEventListener('click',()=>{
+  if(!navigator.geolocation){$('weatherFeedback').textContent='This browser does not provide location access. Choose a saved farm or map point.';return;}
+  $('weatherFeedback').textContent='Requesting your device location…';
+  navigator.geolocation.getCurrentPosition(async position=>{
+    selectedMapPoint={lat:position.coords.latitude,lng:position.coords.longitude};updateOverviewArea();
+    $('weatherFeedback').textContent=`Live location selected (${selectedMapPoint.lat.toFixed(4)}, ${selectedMapPoint.lng.toFixed(4)}). Fetching current conditions, forecast and NASA POWER history…`;
+    await refreshWeather();
+  },error=>{$('weatherFeedback').textContent=error.code===1?'Location permission was denied. Allow location access or select a farm/map point.':'Could not read live location. Select a farm or map point.';},{enableHighAccuracy:false,timeout:15000,maximumAge:300000});
+});
 async function refreshWeather() {
   const location=selectedObservationPoint();
   if (!location) { $('weatherFeedback').textContent='Select a farm, device location or map point first. No location is assumed.'; $('weatherTable').textContent=''; $('forecastTable').innerHTML='<div class="empty-inline">Select an area. No default location is assumed.</div>'; return; }
@@ -886,6 +896,7 @@ async function loadForecast(location) {
   target.innerHTML='<div class="empty-inline">Requesting Open-Meteo forecast…</div>';
   try {
     const data=await api(`/weather/forecast?lat=${encodeURIComponent(location.lat)}&lon=${encodeURIComponent(location.lng)}&days=7`);
+    lastForecast=data;
     const d=data.daily||{}, dates=d.time||[];
     const max=d.temperature_2m_max||[],min=d.temperature_2m_min||[],rain=d.precipitation_sum||[],chance=d.precipitation_probability_max||[],wind=d.wind_speed_10m_max||[];
     period.textContent=`${dates.length}-day model forecast`;
@@ -1143,6 +1154,25 @@ async function sendChat(){
     addChat(reply,'assistant');speak(reply);
   };
   const hasAny=(words)=>words.some(word=>q.includes(word));
+  let apiKey = '';
+  let preferences = {};
+  try { apiKey=sessionStorage.getItem(AI_KEY_SESSION)||''; preferences=JSON.parse(localStorage.getItem(AI_SETTINGS_KEY)||'{}'); } catch (_) {}
+  const safetyQuery=hasAny(['poison','poisoning','swallowed chemical','difficulty breathing','not breathing','unconscious','severe allergic','pesticide','insecticide','fungicide','herbicide','spray dose','chemical dose','mix chemicals','pesticide dose','animal medicine','veterinary']);
+  if(apiKey&&preferences.provider&&preferences.model&&!safetyQuery){
+    $('voiceStatus').textContent=`Asking ${preferences.provider}…`;
+    try{
+      const languageName=LANGUAGE_NAMES[interfaceLanguage]||'English';
+      let observedContext='';
+      if(hasAny(['weather','temperature','temp','rain','rainfall','forecast','humidity','wind','मौसम','तापमान','बारिश','हवामान','पाऊस','तापमान'])){
+        const location=selectedObservationPoint();
+        if(location){goto('weather');await loadForecast(location);const d=lastForecast?.daily||{};observedContext=`\nLive Open-Meteo data for ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}: current=${JSON.stringify(lastForecast?.current||null)}; daily=${JSON.stringify(Object.fromEntries(['time','temperature_2m_min','temperature_2m_max','precipitation_sum','precipitation_probability_max','wind_speed_10m_max'].map(k=>[k,d[k]||[]])))}. Cite dates and units; say unavailable if request failed.`;}
+      }
+      const prompt=`You are KrishiQ, an agricultural information assistant for India. Answer this specific question with useful, non-repetitive guidance. Reply entirely in ${languageName} using its normal script; avoid English except crop names, units and proper nouns. Distinguish provided measurements from general advice; never invent a local measurement, disease diagnosis, or pesticide dose. Ask concise follow-up questions only when essential. For medical, pesticide, or livestock emergencies direct the user to qualified help. ${observedContext}\nFarmer question: ${message}`;
+      const result=await api('/ai/chat',{method:'POST',headers:{'X-Provider-API-Key':apiKey},body:JSON.stringify({provider:preferences.provider,model:preferences.model,base_url:preferences.base_url||null,message:prompt})});
+      $('voiceStatus').textContent=`Reply from ${result.provider} · using your key for this request only`;
+      say(result.answer,true);return;
+    }catch(error){$('voiceStatus').textContent=`Your AI provider is unavailable: ${error.message}. Using local guidance.`;}
+  }
   if(hasAny(['poison','poisoning','swallowed chemical','difficulty breathing','not breathing','unconscious','severe allergic'])){
     const answer='This may be an emergency. Contact local emergency services or a qualified medical/veterinary professional now. Move people and animals away from exposure if it is safe to do so, and keep the product container or label available. I cannot assess or treat an emergency.';
     say(answer);return;
@@ -1163,23 +1193,11 @@ async function sendChat(){
     const answer='A safe fertilizer quantity needs the crop and variety, district, field area and unit, sowing date, crop stage, irrigation, and the soil-test recommendation. The exact product grade matters too. Share those details and verify the rate against the current local crop package; I won’t guess a dose.';
     say(answer);return;
   }
-  if(hasAny(['will it rain','rain tomorrow','weather tomorrow','should i irrigate','irrigate tomorrow'])){
-    goto('weather');
-    say('Weather screen opened. Forecast and NASA POWER historical data are shown separately for your selected location. Check current IMD/KVK advice before acting.');
+  if(hasAny(['will it rain','rain tomorrow','weather tomorrow','should i irrigate','irrigate tomorrow','temperature','forecast','तापमान','मौसम','बारिश','कल बारिश','हवामान','पाऊस','उद्या पाऊस'])){
+    goto('weather');await refreshWeather();
+    const weatherReply=interfaceLanguage==='hi-IN'?'मौसम स्क्रीन पर आपके चुने स्थान का वर्तमान तापमान और पूर्वानुमान दिखेगा। NASA POWER इतिहास अलग है। निर्णय से पहले IMD/KVK सलाह देखें।':interfaceLanguage==='mr-IN'?'हवामान स्क्रीनवर निवडलेल्या ठिकाणचे सध्याचे तापमान आणि अंदाज दिसेल. NASA POWER इतिहास वेगळा आहे. निर्णयापूर्वी IMD/KVK सल्ला तपासा.':'Weather screen shows current conditions and forecast for the selected area; NASA POWER history is separate. Check IMD/KVK advisories before acting.';
+    say(weatherReply);
     return;
-  }
-  let apiKey = '';
-  let preferences = {};
-  try { apiKey=sessionStorage.getItem(AI_KEY_SESSION)||''; preferences=JSON.parse(localStorage.getItem(AI_SETTINGS_KEY)||'{}'); } catch (_) {}
-  if (apiKey && preferences.provider && preferences.model) {
-    $('voiceStatus').textContent = `Asking ${preferences.provider}…`;
-    try {
-      const languageName = LANGUAGE_NAMES[interfaceLanguage] || 'English';
-      const prompt = `You are KrishiQ, a careful agricultural information assistant for India. Reply entirely in ${languageName}, using its usual native script; avoid mixing in English except crop names, units and proper nouns. Use plain language. Separate general information from local facts. Never invent weather or satellite measurements, diagnoses, or pesticide products and doses. Ask for crop, variety, district, season and stage when missing. For diagnosis, say symptoms are not proof and recommend local KVK/agriculture expert review. Do not give chemical rates or mixtures; refer to the current approved product label and qualified local advisor. Do not claim to have inspected photos.\n\nFarmer question: ${message}`;
-      const result=await api('/ai/chat',{method:'POST',headers:{'X-Provider-API-Key':apiKey},body:JSON.stringify({provider:preferences.provider,model:preferences.model,base_url:preferences.base_url||null,message:prompt})});
-      $('voiceStatus').textContent=`Reply from ${result.provider} · key used for this request only`;
-      say(result.answer,true); return;
-    } catch (error) { $('voiceStatus').textContent=`AI unavailable: ${error.message}. Showing built-in guidance.`; }
   }
   const routes=[['satellite',['map','satellite']],['rotation',['rotation','crop sequence']],['weather',['weather','rain','rainfall']],['soil',['soil','soil health']],['farms',['farm','field']]];
   const route=routes.find(([,words])=>words.some(w=>q.includes(w)));
