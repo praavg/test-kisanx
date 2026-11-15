@@ -82,6 +82,7 @@ def test_owner_routes_require_configured_pin(monkeypatch):
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "owner_pin", "owner-secret-123")
+    monkeypatch.setattr(settings, "owner_email", "prathamesh.arc@gmail.com")
     request = Request({
         "type": "http", "http_version": "1.1", "method": "GET", "scheme": "http",
         "path": "/api/v1/owner/dashboard", "raw_path": b"/api/v1/owner/dashboard",
@@ -89,9 +90,12 @@ def test_owner_routes_require_configured_pin(monkeypatch):
         "server": ("testserver", 80),
     })
     with pytest.raises(HTTPException) as denied:
-        owner_guard(request, "wrong-pin")
+        owner_guard(request, "wrong-pin", "prathamesh.arc@gmail.com")
     assert denied.value.status_code == 401
-    owner_guard(request, "owner-secret-123")
+    owner_guard(request, "owner-secret-123", "prathamesh.arc@gmail.com")
+    with pytest.raises(HTTPException) as email_denied:
+        owner_guard(request, "owner-secret-123", "someone-else@example.com")
+    assert email_denied.value.status_code == 401
 
 
 def test_public_payment_claims_are_disabled_by_default(db_session, monkeypatch):

@@ -1,4 +1,4 @@
-const CACHE = 'kisanx-shell-v12';
+const CACHE = 'kisanx-shell-v13';
 const SHELL = ['/', '/assets/app.css', '/assets/app-config.js', '/assets/app.js', '/assets/payments.css', '/assets/payments.js', '/assets/native-motion.css', '/assets/mark.svg', '/assets/kisanx-logo.png', '/assets/kisanx-app-icon.png', '/manifest.webmanifest'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -13,4 +13,3 @@ self.addEventListener('fetch', event => {
     const copy = response.clone(); caches.open(CACHE).then(cache => cache.put(event.request, copy)); return response;
   }).catch(() => caches.match('/'))));
 });
-

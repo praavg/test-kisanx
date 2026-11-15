@@ -61,21 +61,25 @@ class VerifyInput(BaseModel):
     decision: str = Field(pattern="^(APPROVE|REJECT)$")
 
 
-def owner_guard(request: Request, x_owner_pin: str | None = Header(default=None, alias="X-Owner-Pin")) -> None:
+def owner_guard(request: Request, x_owner_pin: str | None = Header(default=None, alias="X-Owner-Pin"),
+                x_owner_email: str | None = Header(default=None, alias="X-Owner-Email")) -> None:
     expected = settings.owner_pin
     if len(expected) < 6:
-        raise HTTPException(status_code=503, detail="Owner payment setup is incomplete. Set KISANX_OWNER_PIN (6+ characters) in the project .env.")
+        raise HTTPException(status_code=503, detail="Owner payment setup is incomplete. Configure KISANX_OWNER_PIN (6+ characters) in the private service environment.")
     client = request.client.host if request.client else "unknown"
     now = time.time()
     recent = [stamp for stamp in _pin_failures.get(client, []) if now - stamp < PIN_LOCK_SECONDS]
     if len(recent) >= PIN_MAX_FAILS:
         raise HTTPException(status_code=429, detail="Too many incorrect PIN attempts. Try again in a few minutes.")
-    if not x_owner_pin or not hmac.compare_digest(x_owner_pin.encode(), expected.encode()):
+    expected_email = settings.owner_email.strip().casefold()
+    supplied_email = (x_owner_email or "").strip().casefold()
+    email_ok = bool(supplied_email) and hmac.compare_digest(supplied_email.encode(), expected_email.encode())
+    if not email_ok or not x_owner_pin or not hmac.compare_digest(x_owner_pin.encode(), expected.encode()):
         recent.append(now)
         if len(_pin_failures) > 1000:
             _pin_failures.clear()
         _pin_failures[client] = recent
-        raise HTTPException(status_code=401, detail="Invalid or missing owner PIN.")
+        raise HTTPException(status_code=401, detail="Owner email or PIN is invalid.")
     _pin_failures.pop(client, None)
 
 

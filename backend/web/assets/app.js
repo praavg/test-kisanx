@@ -24,8 +24,79 @@ let backendConnected = false;
 let speechOn = true;
 let recognition = null;
 let voiceLanguage = 'en-IN';
+let interfaceLanguage = 'en';
 let toastTimer = null;
 const $ = (id) => document.getElementById(id);
+const AI_SETTINGS_KEY = 'kisanx-ai-preferences-v1';
+const AI_KEY_SESSION = 'kisanx-provider-key-v1';
+const UI_TEXT = {
+  'hi-IN': {
+    nav: {overview:'मुख्य पृष्ठ',farms:'खेत',satellite:'उपग्रह मानचित्र',rotation:'फसल चक्र',soil:'मिट्टी',weather:'मौसम',calendar:'फसल कैलेंडर',doctor:'फसल स्वास्थ्य',research:'अनुसंधान',insights:'खेत की जानकारी',settings:'सेटिंग और API',plans:'योजनाएँ और भुगतान'},
+    ids: {breadcrumbCurrent:'मुख्य पृष्ठ',overviewAnalyzeBtn:'क्षेत्र का विश्लेषण करें',overviewUseLocation:'मेरी लोकेशन',overviewChooseOnMap:'मानचित्र पर चुनें',overviewApplyCoordinates:'निर्देशांक उपयोग करें',refreshWeatherBtn:'पूर्वानुमान और NASA POWER अपडेट करें',buildInspectionNote:'खेत निरीक्षण नोट बनाएँ',saveAiSettings:'इन सेटिंग का उपयोग करें',clearAiSettings:'कुंजी हटाएँ',speakToggle:'आवाज़: चालू'},
+    headings: {'view-overview':'अपने खेत को समझें। अगला कदम चुनें।','view-farms':'खेत के रिकॉर्ड','view-satellite':'उपग्रह मानचित्र और क्षेत्र','view-weather':'मौसम और जलवायु संदर्भ','view-doctor':'फसल स्वास्थ्य जाँच','view-settings':'सेटिंग और डेटा स्रोत'},
+    labels: {interface:'इंटरफेस और आवाज़ की भाषा हिंदी में सेट है। कुछ विवरण अंग्रेज़ी में उपलब्ध हो सकते हैं।',voice:'आपकी डिवाइस की आवाज़ से हिंदी में पढ़ा जा रहा है।'},
+    copy: {'.offline-card strong':'सीमित ऑफलाइन उपयोग','.offline-card small':'ऐप खोल और स्थानीय नोट ही उपलब्ध','#view-overview .overview-section-head h2':'अगले उपयोगी कदम','#view-overview .overview-tool-grid .map-tool-card strong':'मानचित्र पर खेत की सीमा बनाएं','#view-overview .overview-tool-grid .weather-tool-card strong':'NASA POWER मौसम इतिहास देखें','#view-overview .overview-tool-grid .soil-tool-card strong':'मिट्टी परीक्षण जोड़ें','#view-overview .overview-tool-grid .rotation-tool-card strong':'फसल क्रम की तुलना करें','#view-weather .panel-kicker':'क्षेत्रीय मौसम पूर्वानुमान','#view-weather .weather-summary h2':'ऐतिहासिक जलवायु संदर्भ','#view-doctor .subheading':'स्थानीय विशेषज्ञ से बात करने से पहले खेत के लक्षण दर्ज करें।','#view-settings .ai-settings h2':'KrishiQ AI सेवा चुनें'}
+  },
+  'mr-IN': {
+    nav: {overview:'मुख्य पृष्ठ',farms:'शेती',satellite:'उपग्रह नकाशा',rotation:'पीक फेरपालट',soil:'माती',weather:'हवामान',calendar:'पीक दिनदर्शिका',doctor:'पीक आरोग्य',research:'संशोधन',insights:'शेती माहिती',settings:'सेटिंग्ज आणि API',plans:'योजना आणि बिलिंग'},
+    ids: {breadcrumbCurrent:'मुख्य पृष्ठ',overviewAnalyzeBtn:'क्षेत्राचे विश्लेषण करा',overviewUseLocation:'माझे स्थान',overviewChooseOnMap:'नकाशावर निवडा',overviewApplyCoordinates:'निर्देशांक वापरा',refreshWeatherBtn:'अंदाज आणि NASA POWER ताजा करा',buildInspectionNote:'शेत निरीक्षण नोंद तयार करा',saveAiSettings:'या सेटिंग्ज वापरा',clearAiSettings:'की हटवा',speakToggle:'आवाज: सुरू'},
+    headings: {'view-overview':'तुमचे शेत समजून घ्या. पुढचे पाऊल निवडा.','view-farms':'शेत नोंदी','view-satellite':'उपग्रह नकाशा आणि क्षेत्र','view-weather':'हवामान संदर्भ','view-doctor':'पीक आरोग्य तपासणी','view-settings':'सेटिंग्ज आणि डेटा स्रोत'},
+    labels: {interface:'इंटरफेस आणि आवाजाची भाषा मराठीत आहे. काही तपशील इंग्रजीत असू शकतात.',voice:'तुमच्या डिव्हाइसच्या आवाजातून मराठीत वाचत आहे.'},
+    copy: {'.offline-card strong':'मर्यादित ऑफलाइन वापर','.offline-card small':'अॅप आणि स्थानिक नोंदी उपलब्ध','#view-overview .overview-section-head h2':'पुढील उपयुक्त पावले','#view-overview .overview-tool-grid .map-tool-card strong':'नकाशावर शेताची सीमा काढा','#view-overview .overview-tool-grid .weather-tool-card strong':'NASA POWER हवामान इतिहास पहा','#view-overview .overview-tool-grid .soil-tool-card strong':'माती चाचणी जोडा','#view-overview .overview-tool-grid .rotation-tool-card strong':'पीक क्रमांची तुलना करा','#view-weather .panel-kicker':'प्रादेशिक हवामान अंदाज','#view-weather .weather-summary h2':'ऐतिहासिक हवामान संदर्भ','#view-doctor .subheading':'स्थानिक तज्ज्ञांशी बोलण्यापूर्वी शेतातील लक्षणे नोंदवा.','#view-settings .ai-settings h2':'KrishiQ AI सेवा निवडा'}
+  }
+};
+
+function applyInterfaceLanguage(language) {
+  interfaceLanguage = language === 'hi-IN' || language === 'mr-IN' ? language : 'en';
+  voiceLanguage = interfaceLanguage === 'en' ? 'en-IN' : interfaceLanguage;
+  document.querySelectorAll('.nav-item[data-view]').forEach(button => {
+    if (button.dataset.baseLabel) {
+      const textNode=[...button.childNodes].find(node=>node.nodeType===Node.TEXT_NODE&&node.textContent.trim());
+      if(textNode)textNode.textContent=` ${button.dataset.baseLabel}`;
+    } else {
+      const textNode=[...button.childNodes].find(node=>node.nodeType===Node.TEXT_NODE&&node.textContent.trim());
+      if(textNode)button.dataset.baseLabel=textNode.textContent.trim();
+    }
+  });
+  document.querySelectorAll('.view h1').forEach(node=>{if(!node.dataset.baseLabel)node.dataset.baseLabel=node.textContent;});
+  for(const key of ['breadcrumbCurrent','overviewAnalyzeBtn','overviewUseLocation','overviewChooseOnMap','overviewApplyCoordinates','refreshWeatherBtn','buildInspectionNote','saveAiSettings','clearAiSettings','speakToggle']){
+    const node=$(key); if(node&&!node.dataset.baseLabel)node.dataset.baseLabel=node.textContent;
+  }
+  document.querySelectorAll('[data-base-copy]').forEach(node=>{node.textContent=node.dataset.baseCopy;});
+  const dict = UI_TEXT[interfaceLanguage];
+  document.documentElement.lang = interfaceLanguage;
+  if (!dict) {
+    document.querySelectorAll('.nav-item[data-view]').forEach(button=>{const textNode=[...button.childNodes].find(node=>node.nodeType===Node.TEXT_NODE&&node.textContent.trim());if(textNode)textNode.textContent=` ${button.dataset.baseLabel}`;});
+    document.querySelectorAll('.view h1').forEach(node=>{node.textContent=node.dataset.baseLabel;});
+    for(const key of ['breadcrumbCurrent','overviewAnalyzeBtn','overviewUseLocation','overviewChooseOnMap','overviewApplyCoordinates','refreshWeatherBtn','buildInspectionNote','saveAiSettings','clearAiSettings','speakToggle']){const node=$(key);if(node)node.textContent=node.dataset.baseLabel;}
+    return;
+  }
+  document.querySelectorAll('.nav-item[data-view]').forEach(button => {
+    const label = dict.nav[button.dataset.view];
+    if (!label) return;
+    const textNode = [...button.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+    if (textNode) textNode.textContent = ` ${label}`;
+  });
+  for (const [id, text] of Object.entries(dict.ids)) { const node = $(id); if (node) node.textContent = text; }
+  for(const [selector,text] of Object.entries(dict.copy||{}))document.querySelectorAll(selector).forEach(node=>{if(!node.dataset.baseCopy)node.dataset.baseCopy=node.textContent;node.textContent=text;});
+  for (const [id, text] of Object.entries(dict.headings)) {
+    const node = document.querySelector(`#${id} h1`);
+    if (node) node.textContent = text;
+  }
+  $('voiceStatus').textContent = dict.labels.interface;
+}
+
+function loadAiPreferences() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(AI_SETTINGS_KEY) || '{}');
+    if ($('aiProvider') && ['gemini','openai','anthropic','openai-compatible'].includes(saved.provider)) $('aiProvider').value = saved.provider;
+    if ($('aiModel')) $('aiModel').value = saved.model || '';
+    if ($('aiBaseUrl')) $('aiBaseUrl').value = saved.base_url || '';
+    if ($('aiApiKey')) $('aiApiKey').value = sessionStorage.getItem(AI_KEY_SESSION) || '';
+    if ($('aiBaseUrlWrap')) $('aiBaseUrlWrap').hidden = $('aiProvider').value !== 'openai-compatible';
+    if ($('aiApiKey')?.value) $('aiSettingsStatus').textContent = 'Provider key available in this tab. It is not saved in the app account.';
+  } catch (_) { /* Storage may be unavailable in private browsing. */ }
+}
 
 function toast(message) {
   const el = $('toast');
@@ -211,6 +282,7 @@ function activateSatelliteLayer(id, selectedDate='') {
   satelliteTileErrorShown = false;
   satelliteTileErrors = 0;
   activeSatelliteLayer = createGibsLayer(def, selectedDate);
+  let layerTilesLoaded = false;
   activeSatelliteLayer.on('tileerror', () => {
     satelliteTileErrors += 1;
     if (!satelliteTileErrorShown) {
@@ -219,11 +291,19 @@ function activateSatelliteLayer(id, selectedDate='') {
     }
   });
   activeSatelliteLayer.on('load', () => {
+    layerTilesLoaded = true;
     const dateText = selectedDate ? ` · ${def.period === 'Monthly' ? selectedDate.slice(0,7) : selectedDate}` : ' · latest available service date';
     if (!satelliteTileErrors) setSatelliteStatus(`${def.provider} visualisation tiles loaded${dateText}. This is browse imagery, not a parcel-level measurement.`, 'success');
   });
   activeSatelliteLayer.addTo(map);
   renderSatelliteMetadata(def);
+  setSatelliteStatus(`Loading ${def.provider} · ${def.title}. This is a NASA GIBS browse layer; numeric measurements are not derived from its pixels.`, 'info');
+  const layerAtRequest = activeSatelliteLayer;
+  setTimeout(() => {
+    if (activeSatelliteLayer === layerAtRequest && !satelliteTileErrors && !layerTilesLoaded) {
+      setSatelliteStatus(`${def.provider} has not confirmed tile loading yet. Check the connection or try another layer/date.`, 'warning');
+    }
+  }, 12000);
   const selector = $('satelliteLayerSelect');
   if (selector) selector.value = id;
 }
@@ -471,6 +551,7 @@ async function loadPowerContext() {
     target.innerHTML = `<div class="empty-inline">${escapeHTML(e.message)}. Run the FastAPI backend to request NASA POWER data.</div>`;
   }
 }
+
 function toLocalISODate(value) {
   const d = new Date(value);
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
@@ -774,26 +855,35 @@ $('saveRotationDiaryBtn').addEventListener('click',async()=>{
 });
 $('refreshWeatherBtn').addEventListener('click', refreshWeather);
 async function refreshWeather() {
-  $('weatherFeedback').textContent='Fetching daily NASA POWER data…';
-  $('weatherTable').textContent='Loading…';
-  try {
-    const location=selectedObservationPoint();
-    if (!location) { $('weatherFeedback').textContent='Select a farm, device location or map point first. No location is assumed.'; $('weatherTable').textContent=''; return; }
-    const latitude=location.lat ?? location.latitude;
-    const longitude=location.lng ?? location.longitude;
-    const data = await api(`/nasa/power?lat=${latitude}&lon=${longitude}&days=30`);
-    lastWeather = data;
-    const keys = Object.keys(data.parameters?.T2M || {}).slice(-7);
-    const rain = data.parameters?.PRECTOTCORR || {};
-    const t = data.parameters?.T2M || {};
-    const rh = data.parameters?.RH2M || {};
-    $('weatherPeriod').textContent=`${data.requested_period.start} – ${data.requested_period.end}`;
-    $('weatherFeedback').textContent='NASA POWER returned a daily regional series. Units and timestamps are retained from the response.';
-    $('weatherTable').innerHTML = keys.length ? `<table class="weather-table"><thead><tr><th>Date</th><th>Avg. temp</th><th>Rainfall</th><th>Humidity</th></tr></thead><tbody>${keys.reverse().map(k=>`<tr><td>${k.slice(0,4)}-${k.slice(4,6)}-${k.slice(6,8)}</td><td>${formatValue(t[k])}</td><td>${formatValue(rain[k])}</td><td>${formatValue(rh[k])}</td></tr>`).join('')}</tbody></table><p class="micro-note">${escapeHTML(data.provenance)}</p><a class="source-link" href="${escapeHTML(data.source_url)}" target="_blank" rel="noopener">Open source response ↗</a>` : '<div class="empty-inline">NASA POWER response contained no daily values in this range.</div>';
-    toast('NASA POWER data loaded.');
-  } catch(e) { $('weatherFeedback').textContent=e.message; $('weatherTable').textContent='No data returned. Try again later or inspect the NASA POWER API status.'; }
+  const location=selectedObservationPoint();
+  if (!location) { $('weatherFeedback').textContent='Select a farm, device location or map point first. No location is assumed.'; $('weatherTable').textContent=''; $('forecastTable').innerHTML='<div class="empty-inline">Select an area. No default location is assumed.</div>'; return; }
+  $('weatherFeedback').textContent='Fetching NASA POWER historical data…';
+  await Promise.allSettled([loadForecast(location),loadNasaPowerWeather(location)]);
 }
-function formatValue(v) { return v === undefined || v === null || v === -999 ? '—' : Number(v).toFixed(1); }
+async function loadForecast(location) {
+  const target=$('forecastTable'), period=$('forecastPeriod');
+  target.innerHTML='<div class="empty-inline">Requesting Open-Meteo forecast…</div>';
+  try {
+    const data=await api(`/weather/forecast?lat=${encodeURIComponent(location.lat)}&lon=${encodeURIComponent(location.lng)}&days=7`);
+    const d=data.daily||{}, dates=d.time||[];
+    const max=d.temperature_2m_max||[],min=d.temperature_2m_min||[],rain=d.precipitation_sum||[],chance=d.precipitation_probability_max||[],wind=d.wind_speed_10m_max||[];
+    period.textContent=`${dates.length}-day model forecast`;
+    const current=data.current?`<p class="micro-note">Current at selected coordinates: ${Number.isFinite(Number(data.current.temperature_2m))?`${Number(data.current.temperature_2m).toFixed(1)} °C`:'temperature unavailable'} · ${Number.isFinite(Number(data.current.relative_humidity_2m))?`${Number(data.current.relative_humidity_2m)}% RH`:'humidity unavailable'} · ${escapeHTML(data.timezone||'')}</p>`:'';
+    target.innerHTML=dates.length?`${current}<div class="table-scroll"><table class="weather-table"><thead><tr><th>Date</th><th>Min / max °C</th><th>Rain mm</th><th>Rain chance</th><th>Wind km/h</th></tr></thead><tbody>${dates.map((date,i)=>`<tr><td>${escapeHTML(date)}</td><td>${formatValue(min[i])} / ${formatValue(max[i])}</td><td>${formatValue(rain[i])}</td><td>${formatValue(chance[i])}${chance[i]==null?'':'%'}</td><td>${formatValue(wind[i])}</td></tr>`).join('')}</tbody></table></div><p class="micro-note">${escapeHTML(data.provenance)} ${escapeHTML(data.attribution||'')}</p>`:'<div class="empty-inline">The provider returned no daily forecast values.</div>';
+  } catch(error) { period.textContent='Unavailable'; target.innerHTML=`<div class="empty-inline">${escapeHTML(error.message)} No substitute forecast was shown.</div>`; }
+}
+async function loadNasaPowerWeather(location) {
+  $('weatherTable').innerHTML='<div class="empty-inline">Loading NASA POWER observations…</div>';
+  try {
+    const data=await api(`/nasa/power?lat=${location.lat}&lon=${location.lng}&days=30`);
+    lastWeather=data;
+    const keys=Object.keys(data.parameters?.T2M||{}).slice(-7),rain=data.parameters?.PRECTOTCORR||{},t=data.parameters?.T2M||{},rh=data.parameters?.RH2M||{};
+    $('weatherPeriod').textContent=`${data.requested_period.start} – ${data.requested_period.end}`;
+    $('weatherFeedback').textContent='NASA POWER returned historical daily regional values. This is not a forecast.';
+    $('weatherTable').innerHTML=keys.length?`<div class="table-scroll"><table class="weather-table"><thead><tr><th>Date</th><th>Avg. temp °C</th><th>Precipitation</th><th>Humidity %</th></tr></thead><tbody>${keys.reverse().map(k=>`<tr><td>${k.slice(0,4)}-${k.slice(4,6)}-${k.slice(6,8)}</td><td>${formatValue(t[k])}</td><td>${formatValue(rain[k])}</td><td>${formatValue(rh[k])}</td></tr>`).join('')}</tbody></table></div><p class="micro-note">${escapeHTML(data.provenance)}</p><a class="source-link" href="${escapeHTML(data.source_url)}" target="_blank" rel="noopener">Open NASA POWER source ↗</a>`:'<div class="empty-inline">NASA POWER response contained no daily values in this range.</div>';
+  } catch(error) { $('weatherFeedback').textContent=error.message; $('weatherTable').innerHTML='<div class="empty-inline">NASA POWER unavailable. No substitute values were shown.</div>'; }
+}
+function formatValue(v) { return v === undefined || v === null || v === -999 || !Number.isFinite(Number(v)) ? '—' : Number(v).toFixed(1); }
 
 $('saveSoilBtn').addEventListener('click', async () => {
   if (!farmCache.length) { toast('Create a farm before saving measured soil values.'); goto('farms'); return; }
@@ -830,7 +920,10 @@ function loadResearchFeatures(){
 async function loadProviderStatuses() {
   const backendState=backendConnected?'Backend reachable':'Backend not reachable';
   const apiNote=backendConnected?'API health check succeeded. NASA POWER is requested only when a farmer selects a location; provider errors return no substitute values.':'Connect the HTTPS FastAPI backend to save farm records and request NASA data.';
-  $('providerList').innerHTML=`<div class="provider-slot"><div class="provider-ident"><span class="provider-dot">NASA</span><div><strong>NASA POWER daily point</strong><small class="muted">Public API ? no key required</small></div></div><div class="provider-actions"><span class="soft-pill">${backendState}</span></div><p class="micro-note">${apiNote}</p></div><div class="provider-slot"><div class="provider-ident"><span class="provider-dot">GIBS</span><div><strong>NASA Earth imagery</strong><small class="muted">Public WMS tile service ? no token</small></div></div><div class="provider-actions"><span class="soft-pill">Check map tile status</span></div><p class="micro-note">Browse visualisations only. Each selected layer reports tile errors in the map; parcel-level indices are not calculated here.</p></div><div class="micro-note">KrishiQ uses built-in local guidance in this release. No Gemini, Claude, or other hosted AI provider is configured; never put provider keys in the mobile app.</div>`;
+  let preferences={},keyPresent=false;
+  try{preferences=JSON.parse(localStorage.getItem(AI_SETTINGS_KEY)||'{}');keyPresent=Boolean(sessionStorage.getItem(AI_KEY_SESSION));}catch(_){}
+  const aiStatus=keyPresent?`Optional AI selected: ${escapeHTML(preferences.provider||'provider')} / ${escapeHTML(preferences.model||'model')} · key available in this tab.`:'Optional AI is not configured. Built-in local guidance remains available.';
+  $('providerList').innerHTML=`<div class="provider-slot"><div class="provider-ident"><span class="provider-dot">NASA</span><div><strong>NASA POWER daily point</strong><small class="muted">Public API · no key required</small></div></div><div class="provider-actions"><span class="soft-pill">${backendState}</span></div><p class="micro-note">${apiNote}</p></div><div class="provider-slot"><div class="provider-ident"><span class="provider-dot">GIBS</span><div><strong>NASA Earth imagery</strong><small class="muted">Public WMS tile service · no token</small></div></div><div class="provider-actions"><span class="soft-pill">NASA GIBS</span></div><p class="micro-note">Browse visualisations only. Each selected layer reports tile errors in the map; parcel-level indices are not calculated here.</p></div><div class="micro-note">${aiStatus} Provider keys are sent only with requests and are not stored by KISAN-X.</div>`;
 }
 const ACTIVITY_STORAGE='kisanx-field-activities-v1';
 const ACTIVITY_TYPES=['Observation','Sowing','Irrigation','Weeding','Fertilizer application','Harvest'];
@@ -958,6 +1051,23 @@ $('downloadInspectionNote').addEventListener('click', () => {
 });
 window.addEventListener('pagehide', clearCropPhotoPreviews, {once: true});
 
+$('askCropDoctorAI')?.addEventListener('click', async () => {
+  const resultNode=$('cropDoctorAIResult');
+  let key='',preferences={};
+  try { key=sessionStorage.getItem(AI_KEY_SESSION)||''; preferences=JSON.parse(localStorage.getItem(AI_SETTINGS_KEY)||'{}'); } catch (_) {}
+  if(!key||!preferences.provider||!preferences.model){$('inspectionFeedback').textContent='Choose your AI provider and enter your own API key in Settings first.';return;}
+  const symptoms=$('doctorSymptoms').value.trim();
+  if(!symptoms){$('inspectionFeedback').textContent='Describe what changed before requesting symptom context.';return;}
+  const languageName=interfaceLanguage==='hi-IN'?'Hindi':interfaceLanguage==='mr-IN'?'Marathi':'English';
+  const prompt=`You are an agricultural extension information assistant. Reply in ${languageName}. The crop is ${$('doctorCrop').value}; stated growth stage: ${$('doctorStage').value}. Farmer's text: ${symptoms}. Offer at most three general possibilities as hypotheses, explain what observations could help distinguish them, and ask for missing location, variety, onset, distribution, weather and field-management details. Do not claim diagnosis, do not say you inspected photos, and do not recommend pesticide/fertilizer products, doses or mixtures. Advise local KVK/agriculture expert confirmation before treatment.`;
+  resultNode.hidden=false;resultNode.textContent='Requesting symptom context from your selected provider…';
+  try{
+    const response=await api('/ai/chat',{method:'POST',headers:{'X-Provider-API-Key':key},body:JSON.stringify({provider:preferences.provider,model:preferences.model,base_url:preferences.base_url||null,message:prompt})});
+    resultNode.textContent=`${response.provider} / ${response.model}\n\n${response.answer}\n\nNot a diagnosis. Confirm with a local qualified agriculture adviser.`;
+    speak(response.answer);
+  }catch(error){resultNode.textContent=`Could not get AI symptom context: ${error.message}. Your photos were not sent.`;}
+});
+
 function openKrishiQ(){ $('krishiqPanel').hidden=false; $('chatInput').focus(); }
 $('krishiqLauncher').addEventListener('click',()=>openKrishiQ());
 $('closeKrishiq').addEventListener('click',()=>{$('krishiqPanel').hidden=true;});
@@ -975,13 +1085,36 @@ function speak(text){
   window.speechSynthesis.cancel();
   const utter=new SpeechSynthesisUtterance(text.slice(0,950));
   utter.lang=voiceLanguage;
-  window.speechSynthesis.speak(utter);
+  utter.rate=0.92;
+  utter.pitch=1;
+  const selectVoice=()=>{
+    const target=voiceLanguage.toLowerCase();
+    const voices=window.speechSynthesis.getVoices();
+    const chosen=voices.find(v=>v.lang.toLowerCase()===target)||voices.find(v=>v.lang.toLowerCase().startsWith(target.split('-')[0]));
+    if(chosen)utter.voice=chosen;
+    window.speechSynthesis.speak(utter);
+  };
+  if(window.speechSynthesis.getVoices().length)selectVoice();
+  else window.speechSynthesis.addEventListener('voiceschanged',selectVoice,{once:true});
 }
 async function sendChat(){
   const input=$('chatInput');const message=input.value.trim();if(!message)return;
   input.value='';addChat(message,'user');$('voiceStatus').textContent='Local knowledge mode';
   const q=message.toLowerCase();
-  const say=(answer)=>{addChat(answer,'assistant');speak(answer);};
+  const say=(answer,modelReply=false)=>{
+    let reply=answer;
+    if(!modelReply&&interfaceLanguage!=='en'){
+      const hi=interfaceLanguage==='hi-IN';
+      if(hasAny(['poison','poisoning','swallowed chemical','difficulty breathing','unconscious'])) reply=hi?'यह आपात स्थिति हो सकती है। तुरंत स्थानीय आपातकालीन सेवा या योग्य चिकित्सा/पशु-चिकित्सा विशेषज्ञ से संपर्क करें। सुरक्षित हो तो लोगों और पशुओं को संपर्क से दूर रखें। मैं आपात उपचार नहीं दे सकता।':'ही आपत्कालीन परिस्थिती असू शकते. त्वरित स्थानिक आपत्कालीन सेवा किंवा पात्र वैद्यकीय/पशुवैद्यकीय तज्ज्ञांशी संपर्क करा. सुरक्षित असल्यास लोकांना आणि जनावरांना दूर ठेवा. मी उपचार देऊ शकत नाही.';
+      else if(hasAny(['pesticide','insecticide','fungicide','herbicide','spray dose','chemical dose'])) reply=hi?'मैं अनुमान से कीटनाशक, मात्रा या मिश्रण नहीं बता सकता। फसल, किस्म, जिला, अवस्था और लक्षण दर्ज करें। रसायन से पहले वर्तमान उत्पाद लेबल और स्थानीय कृषि विशेषज्ञ/KVK से पुष्टि करें।':'अंदाजाने कीटकनाशक, मात्रा किंवा मिश्रण सांगू शकत नाही. पीक, वाण, जिल्हा, अवस्था आणि लक्षणे नोंदवा. रसायन वापरण्यापूर्वी सध्याचे उत्पादन लेबल आणि स्थानिक कृषी तज्ज्ञ/KVK यांच्याकडून खात्री करा.';
+      else if(hasAny(['diagnose','diagnosis','what disease','what pest','yellow leaves','leaf spots','plant disease','crop disease'])) reply=hi?'लक्षणें संकेत हैं, पक्का निदान नहीं। फसल-किस्म, जिला, बुवाई तारीख, अवस्था, समस्या कब शुरू हुई और हाल की बारिश/सिंचाई बताएं। कारण स्पष्ट होने तक अतिरिक्त खाद या कीटनाशक न डालें; स्थानीय KVK से पुष्टि करें।':'लक्षणे संकेत आहेत, निश्चित निदान नाही. पीक-वाण, जिल्हा, पेरणी तारीख, अवस्था, त्रास कधी सुरू झाला आणि अलीकडील पाऊस/सिंचन सांगा. कारण स्पष्ट होईपर्यंत अतिरिक्त खत किंवा कीटकनाशक वापरू नका; स्थानिक KVK कडून खात्री करा.';
+      else if(hasAny(['will it rain','rain tomorrow','weather tomorrow','should i irrigate','irrigate tomorrow'])) reply=hi?'मौसम स्क्रीन खोल दी है। चुने गए स्थान के लिए पूर्वानुमान और NASA POWER के पुराने दैनिक आँकड़े अलग-अलग दिखेंगे। खेत के निर्णय से पहले IMD/KVK सलाह देखें।':'हवामान स्क्रीन उघडली आहे. निवडलेल्या ठिकाणाचा अंदाज आणि NASA POWER ची जुनी दैनिक माहिती वेगळी दिसेल. शेतातील निर्णयापूर्वी IMD/KVK सल्ला तपासा.';
+      else if(q.includes('soil')) reply=hi?'मिट्टी के pH और NPK के लिए Soil Health Card या प्रयोगशाला की मापी हुई जानकारी उपयोग करें। उपग्रह चित्र व्यक्तिगत खेत के सही पोषक तत्व नहीं बताते।':'मातीचा pH आणि NPK साठी Soil Health Card किंवा प्रयोगशाळेतील मोजलेली माहिती वापरा. उपग्रह चित्रे वैयक्तिक शेतातील अचूक पोषकद्रव्ये सांगत नाही.';
+      else if(q.includes('satellite')||q.includes('smap')||q.includes('ndvi')) reply=hi?'मानचित्र पर NASA की क्षेत्रीय दृश्य परतें दिखती हैं। चुनी हुई परत का स्रोत, तारीख और पैमाना देखें। ये खेत के स्तर का संख्यात्मक मापन नहीं हैं।':'नकाशावर NASA चे प्रादेशिक दृश्य स्तर दिसतात. निवडलेल्या स्तराचा स्रोत, तारीख आणि मोजमाप तपासा. हे शेतपातळीवरील संख्यात्मक मोजमाप नाही.';
+      else reply=hi?'मैं KISAN-X के मानचित्र, फसल चक्र, मिट्टी, मौसम और खेत रिकॉर्ड में मदद कर सकता हूँ। स्थानीय सलाह के लिए फसल, किस्म, जिला, मौसम और अवस्था बताएं।':'मी KISAN-X नकाशा, पीक फेरपालट, माती, हवामान आणि शेत नोंदी यांत मदत करू शकतो. स्थानिक सल्ल्यासाठी पीक, वाण, जिल्हा, हंगाम आणि अवस्था सांगा.';
+    }
+    addChat(reply,'assistant');speak(reply);
+  };
   const hasAny=(words)=>words.some(word=>q.includes(word));
   if(hasAny(['poison','poisoning','swallowed chemical','difficulty breathing','not breathing','unconscious','severe allergic'])){
     const answer='This may be an emergency. Contact local emergency services or a qualified medical/veterinary professional now. Move people and animals away from exposure if it is safe to do so, and keep the product container or label available. I cannot assess or treat an emergency.';
@@ -1005,17 +1138,30 @@ async function sendChat(){
   }
   if(hasAny(['will it rain','rain tomorrow','weather tomorrow','should i irrigate','irrigate tomorrow'])){
     goto('weather');
-    const answer='I opened weather and climate context. This app currently shows historical NASA POWER data, not a live IMD forecast, so it cannot answer tomorrow’s rain or irrigation decision. Check the latest IMD/KVK advisory for your block and consider crop stage, recent rain, soil and water availability.';
-    say(answer);return;
+    say('Weather screen opened. Forecast and NASA POWER historical data are shown separately for your selected location. Check current IMD/KVK advice before acting.');
+    return;
+  }
+  let apiKey = '';
+  let preferences = {};
+  try { apiKey=sessionStorage.getItem(AI_KEY_SESSION)||''; preferences=JSON.parse(localStorage.getItem(AI_SETTINGS_KEY)||'{}'); } catch (_) {}
+  if (apiKey && preferences.provider && preferences.model) {
+    $('voiceStatus').textContent = `Asking ${preferences.provider}…`;
+    try {
+      const languageName = interfaceLanguage === 'hi-IN' ? 'Hindi' : interfaceLanguage === 'mr-IN' ? 'Marathi' : 'English';
+      const prompt = `You are KrishiQ, a careful agricultural information assistant for India. Reply in ${languageName}, in plain language. Separate general information from local facts. Never invent weather or satellite measurements, diagnoses, or pesticide products and doses. Ask for crop, variety, district, season and stage when missing. For diagnosis, say symptoms are not proof and recommend local KVK/agriculture expert review. Do not give chemical rates or mixtures; refer to the current approved product label and qualified local advisor. Do not claim to have inspected photos.\n\nFarmer question: ${message}`;
+      const result=await api('/ai/chat',{method:'POST',headers:{'X-Provider-API-Key':apiKey},body:JSON.stringify({provider:preferences.provider,model:preferences.model,base_url:preferences.base_url||null,message:prompt})});
+      $('voiceStatus').textContent=`Reply from ${result.provider} · key used for this request only`;
+      say(result.answer,true); return;
+    } catch (error) { $('voiceStatus').textContent=`AI unavailable: ${error.message}. Showing built-in guidance.`; }
   }
   const routes=[['satellite',['map','satellite']],['rotation',['rotation','crop sequence']],['weather',['weather','rain','rainfall']],['soil',['soil','soil health']],['farms',['farm','field']]];
   const route=routes.find(([,words])=>words.some(w=>q.includes(w)));
-  if(route){goto(route[0]);const reply=`Opening ${route[0]==='rotation'?'the crop rotation planner':route[0]==='satellite'?'the satellite map':route[0]==='soil'?'soil intelligence':route[0]==='weather'?'weather intelligence':'your farms'}. Navigation is handled on this device.`;addChat(reply,'assistant');speak(reply);return;}
+  if(route){goto(route[0]);const reply=`Opening ${route[0]==='rotation'?'the crop rotation planner':route[0]==='satellite'?'the satellite map':route[0]==='soil'?'soil intelligence':route[0]==='weather'?'weather intelligence':'your farms'}. Navigation is handled on this device.`;say(reply);return;}
   let answer='I can guide you to the map, crop rotation planner, measured soil records, weather screen, or farm list. KrishiQ is using built-in local guidance in this release, not a live AI model. For field advice, local crop, variety, district, season, stage, soil test and water context may change the answer.';
   if(q.includes('chickpea')||q.includes('soybean')||q.includes('sorghum')) answer='Crop sequence choice depends on crop history, soil type, harvest timing, sowing window and stored soil moisture. The planner shows prototype options and selected published examples; verify any decision with local KVK advice.';
   else if(q.includes('soil')) answer='Use measured Soil Health Card or laboratory values for pH, organic carbon and nutrients. Satellite images do not directly measure exact NPK or pH in your field.';
   else if(q.includes('satellite')||q.includes('smap')||q.includes('ndvi')) answer='The map layers are NASA browse visualisations at their stated scales. Open dataset status shows which responses are live numeric data, catalog metadata, or unavailable-source status.';
-  addChat(answer,'assistant');speak(answer);
+  say(answer);
 }
 $('chatForm').addEventListener('submit',e=>{e.preventDefault();sendChat();});
 $('micBtn').addEventListener('click',()=>{
@@ -1030,14 +1176,31 @@ $('micBtn').addEventListener('click',()=>{
   try{recognition.start();}catch(e){$('voiceStatus').textContent='Could not start microphone. Check browser permission.';}
 });
 $('languageSelect').addEventListener('change',e=>{
-  voiceLanguage=e.target.value==='en'?'en-IN':e.target.value;
-  const names={'hi-IN':'हिन्दी','mr-IN':'मराठी'};
-  $('voiceStatus').textContent=`Speech input and read-aloud set to ${names[voiceLanguage]||e.target.options[e.target.selectedIndex].text}. The interface and KrishiQ replies remain in English; voice availability depends on the device.`;
+  try { localStorage.setItem('kisanx-interface-language-v1',e.target.value); } catch (_) {}
+  applyInterfaceLanguage(e.target.value);
+  if (recognition) { recognition.stop(); recognition=null; }
+  const names={'hi-IN':'Hindi','mr-IN':'Marathi',en:'English'};
+  $('voiceStatus').textContent=`Interface and speech preference set to ${names[e.target.value]||'English'}. Some untranslated content may remain English; speech depends on installed device voices.`;
+});
+$('aiProvider')?.addEventListener('change',()=>{$('aiBaseUrlWrap').hidden=$('aiProvider').value!=='openai-compatible';});
+$('saveAiSettings')?.addEventListener('click',()=>{
+  const provider=$('aiProvider').value,model=$('aiModel').value.trim(),key=$('aiApiKey').value.trim(),base_url=$('aiBaseUrl').value.trim();
+  if(!model||!key){$('aiSettingsStatus').textContent='Enter a model ID and your own provider key.';return;}
+  if(provider==='openai-compatible'&&!/^https:\/\//i.test(base_url)){$('aiSettingsStatus').textContent='OpenAI-compatible endpoints must use HTTPS.';return;}
+  try{localStorage.setItem(AI_SETTINGS_KEY,JSON.stringify({provider,model,base_url:provider==='openai-compatible'?base_url:''}));sessionStorage.setItem(AI_KEY_SESSION,key);}
+  catch(_){$('aiSettingsStatus').textContent='Browser session storage is unavailable. Settings were not saved.';return;}
+  $('aiSettingsStatus').textContent=`${provider} / ${model} selected. Your key is kept for this browser tab only.`;toast('Your AI provider settings are ready.');
+});
+$('clearAiSettings')?.addEventListener('click',()=>{
+  try{sessionStorage.removeItem(AI_KEY_SESSION);localStorage.removeItem(AI_SETTINGS_KEY);}catch(_){}
+  $('aiApiKey').value='';$('aiModel').value='';$('aiBaseUrl').value='';$('aiSettingsStatus').textContent='Provider key and preferences cleared. Built-in guidance remains available.';
 });
 
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openKrishiQ();}});
 
 async function boot(){
+  try { const saved=localStorage.getItem('kisanx-interface-language-v1')||'en'; $('languageSelect').value=saved; applyInterfaceLanguage(saved); } catch (_) { applyInterfaceLanguage('en'); }
+  loadAiPreferences();
   try{await loadFarms();}catch(e){}
 if ($('sentinelEndDate')) { const end = new Date(); end.setDate(end.getDate()-5); $('sentinelEndDate').value = end.toISOString().slice(0,10); const start = new Date(end); start.setDate(start.getDate()-45); $('sentinelStartDate').value = start.toISOString().slice(0,10); }
   loadResearchFeatures();
@@ -1047,4 +1210,3 @@ if ($('sentinelEndDate')) { const end = new Date(); end.setDate(end.getDate()-5)
   try{const h=await api('/health');backendConnected=h.status==='ok';setOverviewApiStatus(backendConnected,backendConnected?'API connected · farm records available':'API responded without a healthy status');if(!backendConnected)toast('Backend status is not ready.');}catch(e){backendConnected=false;setOverviewApiStatus(false,`API unavailable · ${e.message}`);console.info('Backend unavailable; server-backed records and live integrations cannot be loaded.');}
 }
 boot();
-

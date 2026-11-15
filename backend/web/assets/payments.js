@@ -1,8 +1,8 @@
-﻿(() => {
+(() => {
   const API = `${(window.KISANX_API_BASE || '').replace(/\/$/, '')}/api/v1`;
   const $ = (selector, root = document) => root.querySelector(selector);
   const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-  const state = { config: null, tiers: [], selectedTier: null, ownerPin: '', ownerData: null, proofUrl: null };
+  const state = { config: null, tiers: [], selectedTier: null, ownerPin: '', ownerEmail: '', ownerData: null, proofUrl: null };
   const money = value => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(value || 0));
   const period = days => Number(days) >= 36500 ? 'one-time' : `${days} days`;
 
@@ -141,13 +141,16 @@
   async function ownerApi(path, options = {}) {
     const headers = new Headers(options.headers || {});
     headers.set('X-Owner-Pin', state.ownerPin);
+    headers.set('X-Owner-Email', state.ownerEmail);
     return api(path, { ...options, headers });
   }
 
   function clearOwner() {
     state.ownerPin = '';
+    state.ownerEmail = '';
     state.ownerData = null;
     $('#owner-pin').value = '';
+    $('#owner-email').value = '';
     $('#owner-dashboard').hidden = true;
     $('#owner-login').hidden = false;
     $('#owner-login-message').textContent = '';
@@ -155,6 +158,7 @@
 
   async function unlockOwner() {
     state.ownerPin = $('#owner-pin').value;
+    state.ownerEmail = $('#owner-email').value.trim();
     $('#owner-login-message').textContent = 'Checking access…';
     try {
       await refreshOwner();
@@ -207,7 +211,7 @@
   }
 
   async function showProof(id) {
-    const response = await fetch(`${API}/owner/claims/${id}/proof`, { headers: { 'X-Owner-Pin': state.ownerPin } });
+    const response = await fetch(`${API}/owner/claims/${id}/proof`, { headers: { 'X-Owner-Pin': state.ownerPin, 'X-Owner-Email': state.ownerEmail } });
     if (!response.ok) throw new Error('Could not load this private payment proof.');
     if (state.proofUrl) URL.revokeObjectURL(state.proofUrl);
     state.proofUrl = URL.createObjectURL(await response.blob());

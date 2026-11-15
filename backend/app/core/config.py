@@ -27,6 +27,7 @@ class Settings(BaseSettings):
         "https://localhost,http://localhost,http://tauri.localhost,tauri://localhost"
     )
     owner_pin: str = Field(default="", validation_alias="KISANX_OWNER_PIN")
+    owner_email: str = Field(default="prathamesh.arc@gmail.com", validation_alias="KISANX_OWNER_EMAIL")
     enable_public_payment_claims: bool = Field(
         default=False, validation_alias="KISANX_ENABLE_PUBLIC_PAYMENT_CLAIMS"
     )
