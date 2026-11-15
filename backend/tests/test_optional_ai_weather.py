@@ -7,7 +7,7 @@ from app.api.v1.endpoints.weather_forecast import OPEN_METEO_URL
 def test_ai_key_is_required_and_not_persisted(client):
     response = client.post("/api/v1/ai/chat", json={"provider":"gemini","model":"some-model","message":"hello"})
     assert response.status_code == 400
-    assert "API key" in response.json()["detail"]
+    assert "API key" in response.json()["error"]["message"]
 
 
 def test_ai_provider_is_allowlisted(client):
@@ -89,4 +89,4 @@ def test_forecast_provider_failure_does_not_return_substitute_data(client, monke
     monkeypatch.setattr(forecast.httpx, "AsyncClient", FakeClient)
     response = client.get("/api/v1/weather/forecast?lat=20.5&lon=79&days=7")
     assert response.status_code == 502
-    assert "no substitute forecast" in response.json()["detail"]
+    assert "no substitute forecast" in response.json()["error"]["message"]
