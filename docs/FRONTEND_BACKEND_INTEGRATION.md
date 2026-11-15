@@ -21,7 +21,7 @@ The v0.3.1 frontend is served by the existing FastAPI app. `backend/web/index.ht
 - KrishiQ applies handbook-informed safety triage in the browser. It does not provide a diagnosis, a pesticide recommendation, a fertilizer dose, veterinary treatment or a live forecast.
 - Crop Doctor accepts a photo for inspection context but performs no image analysis or disease diagnosis.
 - The Research Lab cards are proposals, not implemented product capabilities.
-- A plan payment claim can be submitted, but no feature access is gated by subscription status.
+- Payment claims and status lookups are disabled on the public demo by default. If deliberately enabled, status lookup requires both the phone number and UPI reference; no feature access is gated by subscription status.
 
 ## Satellite data interpretation
 
@@ -30,4 +30,3 @@ NASA GIBS layers are browse visualisations. NASA POWER, SMAP, GPM, and other gri
 ## Submission and production handoff
 
 The app is suitable as a hackathon prototype. Before use with real farm decisions, populate and review the crop/rule catalogues, validate local data against ground observations, add authentication and farmer consent controls, define backup/retention practices, and deploy over HTTPS with production secrets and a database. Do not configure a real payment merchant or advertise unavailable services as live.
-

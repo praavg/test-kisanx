@@ -36,6 +36,11 @@ PHONE_RE = re.compile(r"^[6-9]\d{9}$")
 _pin_failures: dict[str, list[float]] = {}
 
 
+class PaymentStatusInput(BaseModel):
+    farmer_phone: str = Field(min_length=10, max_length=16)
+    utr_number: str = Field(min_length=10, max_length=22)
+
+
 class TierUpdate(BaseModel):
     tier_code: str = Field(min_length=1, max_length=40)
     name: str | None = Field(default=None, min_length=1, max_length=60)
@@ -149,13 +154,17 @@ def public_config(db: Session = Depends(get_db)) -> dict:
     config = ensure_owner_config(db)
     tiers = db.scalars(select(SubscriptionTier).where(SubscriptionTier.is_active.is_(True)).order_by(SubscriptionTier.price_inr, SubscriptionTier.id)).all()
     qr_ready = file_in(QR_DIR, config.qr_image_path) is not None
-    return {"payments_ready": bool(config.upi_id), "upi_id": config.upi_id, "payee_name": config.payee_name,
-            "qr_image_url": f"/api/v1/pay/qr?v={config.updated_at}" if qr_ready else None,
+    claims_enabled = settings.enable_public_payment_claims
+    return {"payments_ready": claims_enabled and bool(config.upi_id), "payment_claims_enabled": claims_enabled,
+            "upi_id": config.upi_id if claims_enabled else "", "payee_name": config.payee_name if claims_enabled else "",
+            "qr_image_url": f"/api/v1/pay/qr?v={config.updated_at}" if claims_enabled and qr_ready else None,
             "tiers": [tier_payload(tier) for tier in tiers]}
 
 
 @router.get("/pay/qr")
 def qr_image(db: Session = Depends(get_db)) -> FileResponse:
+    if not settings.enable_public_payment_claims:
+        raise HTTPException(status_code=404, detail="Payment QR is not available on this demo deployment.")
     config = ensure_owner_config(db)
     path = file_in(QR_DIR, config.qr_image_path)
     if path is None:
@@ -169,6 +178,8 @@ async def submit_claim(
     utr_number: str = Form(...), screenshot: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
 ) -> dict:
+    if not settings.enable_public_payment_claims:
+        raise HTTPException(status_code=503, detail="Payment claims are disabled on this demo deployment.")
     name = farmer_name.strip()
     if not 2 <= len(name) <= 80:
         raise HTTPException(status_code=422, detail="Enter your name (2–80 characters).")
@@ -206,17 +217,18 @@ async def submit_claim(
         raise
 
 
-@router.get("/pay/status/{farmer_phone}")
-def payment_status(farmer_phone: str, db: Session = Depends(get_db)) -> dict:
-    phone = normalize_phone(farmer_phone)
-    now = int(time.time())
-    subscription = db.get(ActiveSubscription, phone)
-    claims = db.scalars(select(PaymentClaim).where(PaymentClaim.farmer_phone == phone).order_by(PaymentClaim.created_at.desc(), PaymentClaim.id.desc()).limit(5)).all()
-    active = None if subscription is None else {
-        "tier_code": subscription.tier_code, "activated_at": subscription.activated_at,
-        "expires_at": subscription.expires_at, "is_active": subscription.expires_at > now,
-    }
-    return {"active_subscription": active, "recent_claims": [claim_payload(claim, owner=False) for claim in claims]}
+@router.post("/pay/status")
+def payment_status(payload: PaymentStatusInput, db: Session = Depends(get_db)) -> dict:
+    if not settings.enable_public_payment_claims:
+        raise HTTPException(status_code=503, detail="Payment status is disabled on this demo deployment.")
+    phone = normalize_phone(payload.farmer_phone)
+    utr = re.sub(r"\s+", "", payload.utr_number).upper()
+    if not UTR_RE.fullmatch(utr):
+        raise HTTPException(status_code=422, detail="Enter the UPI reference / UTR from your payment receipt.")
+    claim = db.scalar(select(PaymentClaim).where(
+        PaymentClaim.farmer_phone == phone, PaymentClaim.utr_number == utr
+    ))
+    return {"claim": claim_payload(claim, owner=False) if claim else None}
 
 
 @router.get("/owner/dashboard", dependencies=[Depends(owner_guard)])

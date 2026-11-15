@@ -27,6 +27,9 @@ class Settings(BaseSettings):
         "https://localhost,http://localhost,http://tauri.localhost,tauri://localhost"
     )
     owner_pin: str = Field(default="", validation_alias="KISANX_OWNER_PIN")
+    enable_public_payment_claims: bool = Field(
+        default=False, validation_alias="KISANX_ENABLE_PUBLIC_PAYMENT_CLAIMS"
+    )
 
     nasa_power_base_url: str = "https://power.larc.nasa.gov/api/temporal/daily/point"
     nasa_power_timeout_seconds: float = Field(default=25.0, gt=0, le=120)

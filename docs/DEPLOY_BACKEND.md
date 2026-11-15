@@ -6,7 +6,7 @@ This guide deploys a demo backend using Render's Blueprint support. The blueprin
 
 The current prototype has no farmer accounts or per-farmer access control. Anyone can reach the public API, and farm records include field coordinates. Use demo data only; do not enter real farmer names, phone numbers, field boundaries, payment claims, or receipts on this public demo.
 
-The free Render service sleeps after 15 minutes without traffic and can take about a minute to wake. Its filesystem is temporary, so uploaded QR and payment-proof images disappear after a restart or sleep. The free Render Postgres database expires after 30 days. This setup is for a short demo only: leave owner payments unconfigured and do not use real farmer records. Do not add a QR or UPI ID until persistent private file storage and access controls are in place.
+The free Render service sleeps after 15 minutes without traffic and can take about a minute to wake. Its filesystem is temporary, so uploaded QR and payment-proof images disappear after a restart or sleep. The free Render Postgres database expires after 30 days. This setup is for a short demo only: public payment claims are disabled by default (`KISANX_ENABLE_PUBLIC_PAYMENT_CLAIMS=false`). Keep them disabled, leave owner payments unconfigured and use sample farm records only. Do not add a QR or UPI ID until persistent private file storage and access controls are in place.
 
 ## 1. Put the project in GitHub
 

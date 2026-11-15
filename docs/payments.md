@@ -4,6 +4,9 @@ Payments are sent from the farmer's UPI app directly to the UPI ID configured by
 
 ## Local configuration
 
+Public claims and payment status lookup are disabled unless `KISANX_ENABLE_PUBLIC_PAYMENT_CLAIMS=true`. Keep this false for the public demo: it has no farmer sign-in, per-farmer privacy, persistent private receipt storage, or plan feature gating. Do not collect real payment proofs until those controls are implemented and reviewed.
+
+
 1. Add `KISANX_OWNER_PIN` to the project root `.env`; use a private value of at least six characters. There is no default owner PIN.
 2. Start the FastAPI app. The SQLAlchemy database initializes the owner settings, tiers, claims, and subscriptions on startup when `AUTO_CREATE_TABLES=true`.
 3. Open **Plans & upgrade**, then open **Owner payment settings**. Unlock with the PIN and configure the owner's UPI ID, payee name, and QR image.
@@ -19,7 +22,7 @@ The backend dependency `python-multipart` supports form uploads. QR images are s
 | `GET /api/v1/pay/public-config` | Public | Active plans and owner UPI/QR configuration |
 | `GET /api/v1/pay/qr` | Public | Owner's QR image |
 | `POST /api/v1/pay/submit-claim` | Public | Multipart UTR claim and optional screenshot |
-| `GET /api/v1/pay/status/{farmer_phone}` | Public | Subscription expiry and recent statuses |
+| `POST /api/v1/pay/status` | Public when enabled | One matching claim status using phone + UPI reference in the JSON body |
 | `GET /api/v1/owner/dashboard` | `X-Owner-Pin` | Claims, plan settings, and totals |
 | `POST /api/v1/owner/verify-claim` | `X-Owner-Pin` | Approve/reject a pending claim |
 | `GET /api/v1/owner/claims/{claim_id}/proof` | `X-Owner-Pin` | Private proof image |

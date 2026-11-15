@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
   const API = `${(window.KISANX_API_BASE || '').replace(/\/$/, '')}/api/v1`;
   const $ = (selector, root = document) => root.querySelector(selector);
   const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -33,6 +33,11 @@
     try {
       state.config = await api('/pay/public-config');
       state.tiers = state.config.tiers || [];
+      for (const id of ['plan-phone', 'plan-utr', 'check-payment-status']) {
+        const control = $(`#${id}`);
+        if (control) control.disabled = !state.config.payment_claims_enabled;
+      }
+      if (!state.config.payment_claims_enabled) $('#payment-status-result').textContent = 'Claim lookup is disabled on this public demo.';
       renderPlans();
     } catch (error) {
       grid.innerHTML = `<div class="panel form-message">${escapeHTML(error.message)} <button class="button button-secondary" data-reload-plans>Retry</button></div>`;
@@ -46,13 +51,14 @@
       grid.innerHTML = '<div class="panel">No plans are currently available.</div>';
       return;
     }
+    const checkoutEnabled = Boolean(state.config?.payments_ready);
     grid.innerHTML = state.tiers.map((tier, index) => `
       <article class="plan-card ${index === 1 ? 'featured-plan' : ''}">
-        <div class="plan-top"><span>${index === 0 ? 'ESSENTIAL' : index === 1 ? 'PILOT UPGRADE' : 'ORGANISATIONS'}</span><span class="plan-icon">${index === 0 ? '⌂' : index === 1 ? '✳' : '▦'}</span></div>
+        <div class="plan-top"><span>${index === 0 ? 'ESSENTIAL' : index === 1 ? 'PILOT UPGRADE' : 'ORGANISATIONS'}</span><span class="plan-icon">${index === 0 ? '&#8962;' : index === 1 ? '&#10035;' : '&#9638;'}</span></div>
         <h2>${escapeHTML(tier.name)}</h2><div class="plan-price">${Number(tier.price_inr) === 0 ? 'Free' : money(tier.price_inr)} <small>${Number(tier.price_inr) ? `/ ${escapeHTML(period(tier.duration_days))}` : ''}</small></div>
         <ul>${(tier.features || []).map(feature => `<li>${escapeHTML(feature)}</li>`).join('')}</ul>
-        <button class="button ${Number(tier.price_inr) ? 'button-primary' : 'button-secondary'} full-button" data-upgrade="${escapeHTML(tier.tier_code)}" ${Number(tier.price_inr) ? '' : 'disabled'}>${Number(tier.price_inr) ? 'Select plan' : 'Included'}</button>
-        ${Number(tier.price_inr) ? '<p class="plan-note">Manual owner verification. No automatic activation.</p>' : ''}
+        <button class="button ${Number(tier.price_inr) ? 'button-primary' : 'button-secondary'} full-button" data-upgrade="${escapeHTML(tier.tier_code)}" ${Number(tier.price_inr) ? (checkoutEnabled ? '' : 'disabled') : 'disabled'}>${Number(tier.price_inr) ? (checkoutEnabled ? 'Select plan' : 'Checkout disabled in demo') : 'Feature access unavailable'}</button>
+        ${Number(tier.price_inr) ? `<p class="plan-note">${checkoutEnabled ? 'Manual owner verification. No automatic activation.' : 'Demo pricing only; payment and plan access are off.'}</p>` : '<p class="plan-note">A free tier is listed for planning; no account or plan entitlements are enabled.</p>'}
       </article>`).join('');
   }
 
@@ -60,7 +66,7 @@
     const tier = state.tiers.find(item => item.tier_code === tierCode);
     if (!tier) return;
     if (!state.config?.payments_ready) {
-      toast('The owner has not configured a UPI ID yet.');
+      toast('Checkout is disabled on this public demo.');
       return;
     }
     state.selectedTier = tier;
@@ -103,8 +109,10 @@
       const result = await api('/pay/submit-claim', { method: 'POST', body: data });
       $('#payment-modal-content').innerHTML = `<div class="claim-success"><div class="success-mark">✓</div><h3>Payment proof received</h3><p>Claim #${Number(result.claim_id)} is waiting for owner verification. The owner will check the payment before enabling the subscription.</p><button class="button button-secondary" id="checkout-done" type="button">Close</button></div>`;
       const phone = data.get('farmer_phone');
+      const utr = data.get('utr_number');
       $('#plan-phone').value = phone;
-      checkPaymentStatus(phone).catch(() => {});
+      $('#plan-utr').value = utr;
+      checkPaymentStatus(phone, utr).catch(() => {});
     } catch (error) {
       message.textContent = error.message;
       button.disabled = false;
@@ -112,17 +120,20 @@
   }
 
   function setPaymentStatus(data) {
-    const sub = data.active_subscription;
-    const claims = data.recent_claims || [];
-    const status = sub?.is_active ? `<strong>${escapeHTML(sub.tier_code)}</strong> active until ${new Date(sub.expires_at * 1000).toLocaleDateString()}` : 'No active paid subscription found.';
-    const claimText = claims.length ? `<ul>${claims.map(item => `<li>Claim #${Number(item.id)} · ${escapeHTML(item.status)} · ${money(item.amount_inr)}</li>`).join('')}</ul>` : '';
-    $('#payment-status-result').innerHTML = `<div class="status-result">${status}${claimText}</div>`;
+    const claim = data.claim;
+    const status = claim
+      ? `Claim #${Number(claim.id)} &middot; ${escapeHTML(claim.status)} &middot; ${money(claim.amount_inr)}`
+      : 'No claim matched that phone number and UPI reference.';
+    $('#payment-status-result').innerHTML = `<div class="status-result">${status}</div>`;
   }
 
-  async function checkPaymentStatus(rawPhone) {
+  async function checkPaymentStatus(rawPhone, rawUtr) {
+    if (!state.config?.payment_claims_enabled) throw new Error('Payment status lookup is disabled on this public demo.');
     const phone = String(rawPhone || '').replace(/\D/g, '');
+    const utr = String(rawUtr || '').replace(/\s/g, '').toUpperCase();
     if (!(phone.length === 10 || (phone.length === 12 && phone.startsWith('91')))) throw new Error('Enter a valid 10-digit Indian mobile number.');
-    const data = await api(`/pay/status/${encodeURIComponent(phone)}`);
+    if (!/^[A-Z0-9]{10,22}$/.test(utr)) throw new Error('Enter the UPI reference / UTR from the payment receipt.');
+    const data = await api('/pay/status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ farmer_phone: phone, utr_number: utr }) });
     setPaymentStatus(data);
     return data;
   }
@@ -218,7 +229,7 @@
     if (event.target.closest('#listen-plan')) readPlan();
     if (event.target.closest('#copy-upi')) navigator.clipboard?.writeText(state.config?.upi_id || '').then(() => toast('UPI ID copied.')).catch(() => toast('Copy the UPI ID shown above.'));
     if (event.target.closest('[data-reload-plans]')) loadPlans();
-    if (event.target.closest('#check-payment-status')) checkPaymentStatus($('#plan-phone').value).catch(error => toast(error.message));
+    if (event.target.closest('#check-payment-status')) checkPaymentStatus($('#plan-phone').value, $('#plan-utr').value).catch(error => toast(error.message));
     const verify = event.target.closest('[data-verify]');
     if (verify) ownerApi('/owner/verify-claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ claim_id: Number(verify.dataset.verify), decision: verify.dataset.decision }) }).then(refreshOwner).catch(error => { toast(error.message); if ([401, 429, 503].includes(error.status)) clearOwner(); });
     const proof = event.target.closest('[data-proof]');
