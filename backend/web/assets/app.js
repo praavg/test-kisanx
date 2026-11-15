@@ -23,6 +23,8 @@ let lastWeather = null;
 let backendConnected = false;
 let speechOn = true;
 let recognition = null;
+let speechRecorder = null;
+let speechChunks = [];
 let voiceLanguage = 'en-IN';
 let interfaceLanguage = 'en';
 let toastTimer = null;
@@ -91,6 +93,7 @@ function loadAiPreferences() {
     const saved = JSON.parse(localStorage.getItem(AI_SETTINGS_KEY) || '{}');
     if ($('aiProvider') && ['gemini','openai','anthropic','openai-compatible'].includes(saved.provider)) $('aiProvider').value = saved.provider;
     if ($('aiModel')) $('aiModel').value = saved.model || '';
+    if ($('aiAudioModel')) $('aiAudioModel').value = saved.audio_model || '';
     if ($('aiBaseUrl')) $('aiBaseUrl').value = saved.base_url || '';
     if ($('aiApiKey')) $('aiApiKey').value = sessionStorage.getItem(AI_KEY_SESSION) || '';
     if ($('aiBaseUrlWrap')) $('aiBaseUrlWrap').hidden = $('aiProvider').value !== 'openai-compatible';
@@ -1059,15 +1062,21 @@ $('askCropDoctorAI')?.addEventListener('click', async () => {
   const symptoms=$('doctorSymptoms').value.trim();
   if(!symptoms){$('inspectionFeedback').textContent='Describe what changed before requesting symptom context.';return;}
   const languageName=interfaceLanguage==='hi-IN'?'Hindi':interfaceLanguage==='mr-IN'?'Marathi':'English';
-  const prompt=`You are an agricultural extension information assistant. Reply in ${languageName}. The crop is ${$('doctorCrop').value}; stated growth stage: ${$('doctorStage').value}. Farmer's text: ${symptoms}. Offer at most three general possibilities as hypotheses, explain what observations could help distinguish them, and ask for missing location, variety, onset, distribution, weather and field-management details. Do not claim diagnosis, do not say you inspected photos, and do not recommend pesticide/fertilizer products, doses or mixtures. Advise local KVK/agriculture expert confirmation before treatment.`;
-  resultNode.hidden=false;resultNode.textContent='Requesting symptom context from your selected provider…';
+  const includePhotos=$('includeCropPhotos')?.checked===true;
+  const selectedPhotos=includePhotos?cropPhotoRecords.map(photo=>photo.file):[];
+  if(selectedPhotos.length>4||selectedPhotos.some(file=>file.size>8*1024*1024)||selectedPhotos.reduce((sum,file)=>sum+file.size,0)>15*1024*1024){$('inspectionFeedback').textContent='Keep each selected image under 8 MB and the total under 15 MB.';return;}
+  const prompt=`You are an agricultural extension information assistant. Reply in ${languageName}. The crop is ${$('doctorCrop').value}; stated growth stage: ${$('doctorStage').value}. Farmer's text: ${symptoms}. Offer at most three general possibilities as hypotheses, explain what observations could help distinguish them, and ask for missing location, variety, onset, distribution, weather and field-management details. If images are attached, describe visible features only as clues, not as a confirmed diagnosis. Do not recommend pesticide/fertilizer products, doses or mixtures. Advise local KVK/agriculture expert confirmation before treatment.`;
+  resultNode.hidden=false;resultNode.textContent=`Sending symptom context${selectedPhotos.length?` and ${selectedPhotos.length} selected photo(s)`:''} to your provider…`;
   try{
-    const response=await api('/ai/chat',{method:'POST',headers:{'X-Provider-API-Key':key},body:JSON.stringify({provider:preferences.provider,model:preferences.model,base_url:preferences.base_url||null,message:prompt})});
+    const images=await Promise.all(selectedPhotos.map(file=>new Promise((resolve,reject)=>{
+      const reader=new FileReader();reader.onerror=()=>reject(new Error('Could not read a selected crop photo.'));
+      reader.onload=()=>resolve({mime_type:file.type,data:String(reader.result).split(',')[1]||''});reader.readAsDataURL(file);
+    })));
+    const response=await api('/ai/chat',{method:'POST',headers:{'X-Provider-API-Key':key},body:JSON.stringify({provider:preferences.provider,model:preferences.model,base_url:preferences.base_url||null,message:prompt,images})});
     resultNode.textContent=`${response.provider} / ${response.model}\n\n${response.answer}\n\nNot a diagnosis. Confirm with a local qualified agriculture adviser.`;
     speak(response.answer);
-  }catch(error){resultNode.textContent=`Could not get AI symptom context: ${error.message}. Your photos were not sent.`;}
+  }catch(error){resultNode.textContent=`Could not get AI symptom context: ${error.message}.${selectedPhotos.length?' Check whether the chosen model supports images.':' Selected photos were not included.'}`;}
 });
-
 function openKrishiQ(){ $('krishiqPanel').hidden=false; $('chatInput').focus(); }
 $('krishiqLauncher').addEventListener('click',()=>openKrishiQ());
 $('closeKrishiq').addEventListener('click',()=>{$('krishiqPanel').hidden=true;});
@@ -1164,9 +1173,32 @@ async function sendChat(){
   say(answer);
 }
 $('chatForm').addEventListener('submit',e=>{e.preventDefault();sendChat();});
-$('micBtn').addEventListener('click',()=>{
+$('micBtn').addEventListener('click',async()=>{
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){$('voiceStatus').textContent='Speech recognition is not supported in this browser. Try a recent Chrome-based browser.';toast('Speech input is not available in this browser.');return;}
+  if(!SR){
+    if(speechRecorder?.state==='recording'){speechRecorder.stop();return;}
+    if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){$('voiceStatus').textContent='Voice input is unavailable here. Allow microphone access on HTTPS or use a supported browser.';toast('Microphone recording is unavailable.');return;}
+    let apiKey='',prefs={};try{apiKey=sessionStorage.getItem(AI_KEY_SESSION)||'';prefs=JSON.parse(localStorage.getItem(AI_SETTINGS_KEY)||'{}');}catch(_){}
+    if(!apiKey||!prefs.provider){$('voiceStatus').textContent='Set your own provider and key in Settings to transcribe on this browser.';toast('Configure your own AI provider for voice transcription.');return;}
+    if(prefs.provider==='anthropic'){$('voiceStatus').textContent='This speech-upload route supports Gemini, OpenAI, and OpenAI-compatible transcription models. Choose one in Settings.';toast('Choose a provider that supports speech transcription.');return;}
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const mime=['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4'].find(type=>MediaRecorder.isTypeSupported(type));
+      speechChunks=[];speechRecorder=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);
+      speechRecorder.ondataavailable=e=>{if(e.data.size)speechChunks.push(e.data);};
+      speechRecorder.onerror=()=>{$('voiceStatus').textContent='Microphone recording failed.';stream.getTracks().forEach(track=>track.stop());};
+      speechRecorder.onstop=async()=>{
+        stream.getTracks().forEach(track=>track.stop());$('micBtn').classList.remove('listening');
+        const blob=new Blob(speechChunks,{type:speechRecorder.mimeType||'audio/webm'});speechRecorder=null;speechChunks=[];
+        if(!blob.size){$('voiceStatus').textContent='No audio recorded. Tap the microphone and try again.';return;}
+        $('voiceStatus').textContent='Transcribing with your selected provider…';
+        const form=new FormData();form.append('audio',blob,`kisanx-recording.${blob.type.includes('mp4')?'mp4':blob.type.includes('ogg')?'ogg':'webm'}`);form.append('provider',prefs.provider);form.append('model',prefs.audio_model||prefs.model);form.append('language',voiceLanguage);if(prefs.base_url)form.append('base_url',prefs.base_url);
+        try{const result=await api('/ai/transcribe',{method:'POST',headers:{'X-Provider-API-Key':apiKey},body:form});$('chatInput').value=result.transcript;$('voiceStatus').textContent=`Transcribed in ${voiceLanguage}. Review the text, then send.`;$('chatInput').focus();}
+        catch(error){$('voiceStatus').textContent=`Transcription unavailable: ${error.message}`;toast('Voice transcription failed.');}
+      };
+      speechRecorder.start();$('micBtn').classList.add('listening');$('voiceStatus').textContent='Recording… tap the microphone again to finish.';return;
+    }catch(error){$('voiceStatus').textContent='Microphone access failed. Allow permission and use HTTPS.';toast('Check microphone permission.');return;}
+  }
   if(recognition){recognition.stop();recognition=null;$('micBtn').classList.remove('listening');$('voiceStatus').textContent='Microphone stopped';return;}
   recognition=new SR();recognition.lang=voiceLanguage;recognition.interimResults=true;recognition.continuous=false;
   recognition.onstart=()=>{$('micBtn').classList.add('listening');$('voiceStatus').textContent='Listening… speak now';};
@@ -1184,16 +1216,16 @@ $('languageSelect').addEventListener('change',e=>{
 });
 $('aiProvider')?.addEventListener('change',()=>{$('aiBaseUrlWrap').hidden=$('aiProvider').value!=='openai-compatible';});
 $('saveAiSettings')?.addEventListener('click',()=>{
-  const provider=$('aiProvider').value,model=$('aiModel').value.trim(),key=$('aiApiKey').value.trim(),base_url=$('aiBaseUrl').value.trim();
+  const provider=$('aiProvider').value,model=$('aiModel').value.trim(),audio_model=$('aiAudioModel').value.trim(),key=$('aiApiKey').value.trim(),base_url=$('aiBaseUrl').value.trim();
   if(!model||!key){$('aiSettingsStatus').textContent='Enter a model ID and your own provider key.';return;}
   if(provider==='openai-compatible'&&!/^https:\/\//i.test(base_url)){$('aiSettingsStatus').textContent='OpenAI-compatible endpoints must use HTTPS.';return;}
-  try{localStorage.setItem(AI_SETTINGS_KEY,JSON.stringify({provider,model,base_url:provider==='openai-compatible'?base_url:''}));sessionStorage.setItem(AI_KEY_SESSION,key);}
+  try{localStorage.setItem(AI_SETTINGS_KEY,JSON.stringify({provider,model,audio_model,base_url:provider==='openai-compatible'?base_url:''}));sessionStorage.setItem(AI_KEY_SESSION,key);}
   catch(_){$('aiSettingsStatus').textContent='Browser session storage is unavailable. Settings were not saved.';return;}
   $('aiSettingsStatus').textContent=`${provider} / ${model} selected. Your key is kept for this browser tab only.`;toast('Your AI provider settings are ready.');
 });
 $('clearAiSettings')?.addEventListener('click',()=>{
   try{sessionStorage.removeItem(AI_KEY_SESSION);localStorage.removeItem(AI_SETTINGS_KEY);}catch(_){}
-  $('aiApiKey').value='';$('aiModel').value='';$('aiBaseUrl').value='';$('aiSettingsStatus').textContent='Provider key and preferences cleared. Built-in guidance remains available.';
+  $('aiApiKey').value='';$('aiModel').value='';$('aiAudioModel').value='';$('aiBaseUrl').value='';$('aiSettingsStatus').textContent='Provider key and preferences cleared. Built-in guidance remains available.';
 });
 
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openKrishiQ();}});
