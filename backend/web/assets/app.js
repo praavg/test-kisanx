@@ -418,6 +418,7 @@ function locateMap() {
     $('drawStatus').textContent='Device location selected. Draw a boundary or request regional context here.';
     updateActiveArea();
     updateOverviewArea();
+    loadForecast(selectedMapPoint);
     setSatelliteStatus('Device location selected. NASA layers show regional imagery; numeric data status is listed below.', 'success');
   }, error => {
     const message=error.code===1?'Location permission was denied. Tap the map to select a point.':'Could not determine location. Tap the map to select a point.';
@@ -475,6 +476,7 @@ async function loadSatelliteMetrics() {
     target.innerHTML = `<div class="empty-inline">NASA data hub could not be reached: ${escapeHTML(e.message)}. Retry while the backend is running.</div>`;
   }
 }
+function normalizeLongitude(value) { const lon=Number(value); return Number.isFinite(lon)?((lon+180)%360+360)%360-180:NaN; }
 function initMap() {
   bindSatelliteControls();
   if (map) { map.invalidateSize(); return; }
@@ -493,16 +495,16 @@ function initMap() {
   if (savedGeometry) focusFarmBoundary(selectedBoundaryFarm());
   map.on('click', (e) => {
     if (!drawMode) {
-      selectedMapPoint={lat:e.latlng.lat,lng:e.latlng.lng};
+      const longitude=normalizeLongitude(e.latlng.lng);selectedMapPoint={lat:e.latlng.lat,lng:longitude};
       if (selectedMapMarker) map.removeLayer(selectedMapMarker);
-      selectedMapMarker=L.circleMarker(e.latlng,{radius:6,color:'#245b3d',fillColor:'#e6f1e7',fillOpacity:1,weight:2}).addTo(map).bindTooltip(`Selected point · ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`).openTooltip();
-      $('drawStatus').textContent=`Selected location ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}. Request climate context or draw a field.`;
+      const point=[e.latlng.lat,longitude];selectedMapMarker=L.circleMarker(point,{radius:6,color:'#245b3d',fillColor:'#e6f1e7',fillOpacity:1,weight:2}).addTo(map).bindTooltip(`Selected point · ${e.latlng.lat.toFixed(4)}, ${longitude.toFixed(4)}`).openTooltip();
+      $('drawStatus').textContent=`Selected location ${e.latlng.lat.toFixed(4)}, ${longitude.toFixed(4)}. Request climate context or draw a field.`;
       updateActiveArea();
       updateOverviewArea();
       return;
     }
-    drawPoints.push([e.latlng.lat, e.latlng.lng]);
-    const marker = L.circleMarker(e.latlng, {radius:5,color:'#245b3d',fillColor:'#e6f1e7',fillOpacity:1,weight:2}).addTo(map);
+    const longitude=normalizeLongitude(e.latlng.lng);drawPoints.push([e.latlng.lat, longitude]);
+    const marker = L.circleMarker([e.latlng.lat,longitude], {radius:5,color:'#245b3d',fillColor:'#e6f1e7',fillOpacity:1,weight:2}).addTo(map);
     drawMarkers.push(marker);
     if (drawSketchLayer) map.removeLayer(drawSketchLayer);
     const previewPoints=drawPoints.map(([lat,lng])=>[lat,lng]);
@@ -517,7 +519,7 @@ function initMap() {
   updateActiveArea();
 }
 function closeRing(points) {
-  const coords = points.map(([lat, lon]) => [lon, lat]);
+  const coords = points.map(([lat, lon]) => [normalizeLongitude(lon), lat]);
   if (coords.length && (coords[0][0] !== coords.at(-1)[0] || coords[0][1] !== coords.at(-1)[1])) coords.push(coords[0]);
   return coords;
 }
@@ -876,6 +878,11 @@ $('saveRotationDiaryBtn').addEventListener('click',async()=>{
   loadRotationDiary();toast('Farm outcome saved.');
 });
 $('refreshWeatherBtn').addEventListener('click', refreshWeather);
+$('overviewWeatherBtn')?.addEventListener('click',async()=>{
+  const location=selectedObservationPoint();
+  if(location&&Number.isFinite(Number(location.lat))&&Number(location.lat)>=-90&&Number(location.lat)<=90){location.lng=normalizeLongitude(location.lng);await loadForecast(location);return;}
+  goto('weather');$('weatherUseLocationBtn')?.click();
+});
 $('weatherUseLocationBtn')?.addEventListener('click',()=>{
   if(!navigator.geolocation){$('weatherFeedback').textContent='This browser does not provide location access. Choose a saved farm or map point.';return;}
   $('weatherFeedback').textContent='Requesting your device location…';
@@ -904,8 +911,9 @@ async function loadForecast(location) {
     const c=data.current||{},weather=weatherDescription(c.weather_code),temp=c.temperature_2m,feels=c.apparent_temperature,rh=c.relative_humidity_2m,rainNow=c.precipitation,windNow=c.wind_speed_10m;
     const metric=(value,digits=0)=>value==null||!Number.isFinite(Number(value))?'—':Number(value).toFixed(digits);
     currentCard.innerHTML=`<div class="current-weather-main"><div class="current-weather-icon" aria-hidden="true">${weather.icon}</div><div class="current-weather-reading"><div class="current-weather-label">Current conditions <span>· ${escapeHTML(data.timezone||'local time')}</span></div><div class="current-weather-temp">${metric(temp,1)}<span>${escapeHTML(data.units?.current?.temperature_2m||'°C')}</span></div><div class="current-weather-description">${weather.label}</div></div></div><div class="current-weather-details"><div><small>Feels like</small><strong>${metric(feels,1)} ${escapeHTML(data.units?.current?.apparent_temperature||'°C')}</strong></div><div><small>Humidity</small><strong>${metric(rh)}${rh==null?'':'%'} </strong></div><div><small>Rain now</small><strong>${metric(rainNow,1)} ${escapeHTML(data.units?.current?.precipitation||'mm')}</strong></div><div><small>Wind</small><strong>${metric(windNow,1)} ${escapeHTML(data.units?.current?.wind_speed_10m||'km/h')}</strong></div><div class="current-weather-location">Selected area · ${Number(location.lat).toFixed(4)}, ${Number(location.lng).toFixed(4)} ${c.time?`· updated ${escapeHTML(c.time)}`:''}</div></div>`;
+    const overview=$('overviewWeatherSummary');if(overview)overview.innerHTML=`<span class="overview-weather-symbol">${weather.icon}</span><span><strong>${metric(temp,1)}${escapeHTML(data.units?.current?.temperature_2m||'°C')} · ${weather.label}</strong><small>Feels like ${metric(feels,1)}° · Humidity ${metric(rh)}% · ${escapeHTML(data.timezone||'local time')}</small></span>`;
     target.innerHTML=dates.length?`<div class="table-scroll"><table class="weather-table"><thead><tr><th>Date</th><th>Min / max °C</th><th>Rain mm</th><th>Rain chance</th><th>Wind km/h</th></tr></thead><tbody>${dates.map((date,i)=>`<tr><td>${escapeHTML(date)}</td><td>${formatValue(min[i])} / ${formatValue(max[i])}</td><td>${formatValue(rain[i])}</td><td>${formatValue(chance[i])}${chance[i]==null?'':'%'}</td><td>${formatValue(wind[i])}</td></tr>`).join('')}</tbody></table></div><p class="micro-note">${escapeHTML(data.provenance)} ${escapeHTML(data.attribution||'')}</p>`:'<div class="empty-inline">The provider returned no daily forecast values.</div>';
-  } catch(error) { period.textContent='Unavailable'; currentCard.innerHTML=`<div class="current-weather-empty">Current conditions unavailable: ${escapeHTML(error.message)}. No substitute weather was shown.</div>`;target.innerHTML=`<div class="empty-inline">${escapeHTML(error.message)} No substitute forecast was shown.</div>`; }
+  } catch(error) { period.textContent='Unavailable'; currentCard.innerHTML=`<div class="current-weather-empty">Current conditions unavailable: ${escapeHTML(error.message)}. No substitute weather was shown.</div>`;const overview=$('overviewWeatherSummary');if(overview)overview.innerHTML=`<span class="overview-weather-symbol">⚠</span><span><strong>Weather unavailable</strong><small>${escapeHTML(error.message)}</small></span>`;target.innerHTML=`<div class="empty-inline">${escapeHTML(error.message)} No substitute forecast was shown.</div>`; }
 }
 function weatherDescription(code){
   const n=Number(code);if(n===0)return{icon:'☀️',label:'Clear sky'};if(n===1)return{icon:'🌤️',label:'Mostly clear'};if(n===2)return{icon:'⛅',label:'Partly cloudy'};if(n===3)return{icon:'☁️',label:'Overcast'};
