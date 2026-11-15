@@ -19,7 +19,7 @@ async def weather_forecast(
         "longitude": lon,
         "forecast_days": days,
         "timezone": "auto",
-        "current": "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m",
+        "current": "temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,wind_speed_10m,weather_code,is_day",
         "hourly": "temperature_2m,precipitation_probability,precipitation,relative_humidity_2m,wind_speed_10m",
         "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max",
     }

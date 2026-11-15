@@ -143,3 +143,37 @@ def test_forecast_provider_failure_does_not_return_substitute_data(client, monke
     response = client.get("/api/v1/weather/forecast?lat=20.5&lon=79&days=7")
     assert response.status_code == 502
     assert "no substitute forecast" in response.json()["error"]["message"]
+
+
+def test_forecast_returns_current_conditions_for_visible_weather_card(client, monkeypatch):
+    import app.api.v1.endpoints.weather_forecast as forecast
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"timezone":"Asia/Kolkata","current":{"temperature_2m":31.2,"apparent_temperature":34.1,
+                    "relative_humidity_2m":62,"precipitation":0,"wind_speed_10m":8.5,"weather_code":2,"is_day":1},
+                    "current_units":{"temperature_2m":"°C"},"daily":{"time":["2026-11-15"],"temperature_2m_max":[32]}}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def get(self, url, params):
+            assert "weather_code" in params["current"]
+            assert "apparent_temperature" in params["current"]
+            return FakeResponse()
+
+    monkeypatch.setattr(forecast.httpx, "AsyncClient", FakeClient)
+    response=client.get("/api/v1/weather/forecast?lat=20.5&lon=79&days=7")
+    assert response.status_code==200
+    assert response.json()["current"]["temperature_2m"]==31.2
+    assert response.json()["current"]["weather_code"]==2

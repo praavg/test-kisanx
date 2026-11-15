@@ -887,22 +887,31 @@ $('weatherUseLocationBtn')?.addEventListener('click',()=>{
 });
 async function refreshWeather() {
   const location=selectedObservationPoint();
-  if (!location) { $('weatherFeedback').textContent='Select a farm, device location or map point first. No location is assumed.'; $('weatherTable').textContent=''; $('forecastTable').innerHTML='<div class="empty-inline">Select an area. No default location is assumed.</div>'; return; }
+  if (!location) { $('weatherFeedback').textContent='Select a farm, device location or map point first. No location is assumed.'; $('weatherTable').textContent=''; $('currentWeatherCard').innerHTML='<div class="current-weather-empty">Select a saved farm or use live location to see current conditions.</div>'; $('forecastTable').innerHTML='<div class="empty-inline">Select an area. No default location is assumed.</div>'; return; }
   $('weatherFeedback').textContent='Fetching NASA POWER historical data…';
   await Promise.allSettled([loadForecast(location),loadNasaPowerWeather(location)]);
 }
 async function loadForecast(location) {
-  const target=$('forecastTable'), period=$('forecastPeriod');
+  const target=$('forecastTable'), period=$('forecastPeriod'), currentCard=$('currentWeatherCard');
   target.innerHTML='<div class="empty-inline">Requesting Open-Meteo forecast…</div>';
+  currentCard.innerHTML='<div class="current-weather-empty">Loading current conditions for selected coordinates…</div>';
   try {
     const data=await api(`/weather/forecast?lat=${encodeURIComponent(location.lat)}&lon=${encodeURIComponent(location.lng)}&days=7`);
     lastForecast=data;
     const d=data.daily||{}, dates=d.time||[];
     const max=d.temperature_2m_max||[],min=d.temperature_2m_min||[],rain=d.precipitation_sum||[],chance=d.precipitation_probability_max||[],wind=d.wind_speed_10m_max||[];
     period.textContent=`${dates.length}-day model forecast`;
-    const current=data.current?`<p class="micro-note">Current at selected coordinates: ${Number.isFinite(Number(data.current.temperature_2m))?`${Number(data.current.temperature_2m).toFixed(1)} °C`:'temperature unavailable'} · ${Number.isFinite(Number(data.current.relative_humidity_2m))?`${Number(data.current.relative_humidity_2m)}% RH`:'humidity unavailable'} · ${escapeHTML(data.timezone||'')}</p>`:'';
-    target.innerHTML=dates.length?`${current}<div class="table-scroll"><table class="weather-table"><thead><tr><th>Date</th><th>Min / max °C</th><th>Rain mm</th><th>Rain chance</th><th>Wind km/h</th></tr></thead><tbody>${dates.map((date,i)=>`<tr><td>${escapeHTML(date)}</td><td>${formatValue(min[i])} / ${formatValue(max[i])}</td><td>${formatValue(rain[i])}</td><td>${formatValue(chance[i])}${chance[i]==null?'':'%'}</td><td>${formatValue(wind[i])}</td></tr>`).join('')}</tbody></table></div><p class="micro-note">${escapeHTML(data.provenance)} ${escapeHTML(data.attribution||'')}</p>`:'<div class="empty-inline">The provider returned no daily forecast values.</div>';
-  } catch(error) { period.textContent='Unavailable'; target.innerHTML=`<div class="empty-inline">${escapeHTML(error.message)} No substitute forecast was shown.</div>`; }
+    const c=data.current||{},weather=weatherDescription(c.weather_code),temp=c.temperature_2m,feels=c.apparent_temperature,rh=c.relative_humidity_2m,rainNow=c.precipitation,windNow=c.wind_speed_10m;
+    const metric=(value,digits=0)=>value==null||!Number.isFinite(Number(value))?'—':Number(value).toFixed(digits);
+    currentCard.innerHTML=`<div class="current-weather-main"><div class="current-weather-icon" aria-hidden="true">${weather.icon}</div><div class="current-weather-reading"><div class="current-weather-label">Current conditions <span>· ${escapeHTML(data.timezone||'local time')}</span></div><div class="current-weather-temp">${metric(temp,1)}<span>${escapeHTML(data.units?.current?.temperature_2m||'°C')}</span></div><div class="current-weather-description">${weather.label}</div></div></div><div class="current-weather-details"><div><small>Feels like</small><strong>${metric(feels,1)} ${escapeHTML(data.units?.current?.apparent_temperature||'°C')}</strong></div><div><small>Humidity</small><strong>${metric(rh)}${rh==null?'':'%'} </strong></div><div><small>Rain now</small><strong>${metric(rainNow,1)} ${escapeHTML(data.units?.current?.precipitation||'mm')}</strong></div><div><small>Wind</small><strong>${metric(windNow,1)} ${escapeHTML(data.units?.current?.wind_speed_10m||'km/h')}</strong></div><div class="current-weather-location">Selected area · ${Number(location.lat).toFixed(4)}, ${Number(location.lng).toFixed(4)} ${c.time?`· updated ${escapeHTML(c.time)}`:''}</div></div>`;
+    target.innerHTML=dates.length?`<div class="table-scroll"><table class="weather-table"><thead><tr><th>Date</th><th>Min / max °C</th><th>Rain mm</th><th>Rain chance</th><th>Wind km/h</th></tr></thead><tbody>${dates.map((date,i)=>`<tr><td>${escapeHTML(date)}</td><td>${formatValue(min[i])} / ${formatValue(max[i])}</td><td>${formatValue(rain[i])}</td><td>${formatValue(chance[i])}${chance[i]==null?'':'%'}</td><td>${formatValue(wind[i])}</td></tr>`).join('')}</tbody></table></div><p class="micro-note">${escapeHTML(data.provenance)} ${escapeHTML(data.attribution||'')}</p>`:'<div class="empty-inline">The provider returned no daily forecast values.</div>';
+  } catch(error) { period.textContent='Unavailable'; currentCard.innerHTML=`<div class="current-weather-empty">Current conditions unavailable: ${escapeHTML(error.message)}. No substitute weather was shown.</div>`;target.innerHTML=`<div class="empty-inline">${escapeHTML(error.message)} No substitute forecast was shown.</div>`; }
+}
+function weatherDescription(code){
+  const n=Number(code);if(n===0)return{icon:'☀️',label:'Clear sky'};if(n===1)return{icon:'🌤️',label:'Mostly clear'};if(n===2)return{icon:'⛅',label:'Partly cloudy'};if(n===3)return{icon:'☁️',label:'Overcast'};
+  if([45,48].includes(n))return{icon:'🌫️',label:'Fog'};if([51,53,55,56,57].includes(n))return{icon:'🌦️',label:'Drizzle'};
+  if([61,63,65,66,67].includes(n))return{icon:'🌧️',label:'Rain'};if([71,73,75,77,85,86].includes(n))return{icon:'🌨️',label:'Snow'};
+  if([80,81,82].includes(n))return{icon:'🌧️',label:'Rain showers'};if([95,96,99].includes(n))return{icon:'⛈️',label:'Thunderstorm'};return{icon:'🌡️',label:'Conditions unavailable'};
 }
 async function loadNasaPowerWeather(location) {
   $('weatherTable').innerHTML='<div class="empty-inline">Loading NASA POWER observations…</div>';
